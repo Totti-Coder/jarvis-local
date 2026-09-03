@@ -1,0 +1,248 @@
+"""Espejo de las tareas en Google Calendar.
+
+SQLite manda; Calendar es una copia. El orden importa: si Google está caído
+o no hay conexión, apuntar la compra tiene que seguir funcionando igual.
+Por eso todo aquí falla en silencio y nunca corta el paso.
+
+Sincroniza en UN sentido: de Jarvis a Calendar. Traer de vuelta lo que crees
+en Calendar, y resolver qué gana cuando cambias algo en los dos sitios, es
+bastante más trabajo y de momento no está.
+
+PUESTA EN MARCHA
+  1. Consola de Google -> habilitar Google Calendar API
+  2. Pantalla de consentimiento OAuth -> Externo -> añádete como usuario de prueba
+  3. Credenciales -> ID de cliente OAuth -> Aplicación de escritorio
+  4. Copiar .env.example como .env y pegar el client_id y el client_secret
+  5. python calendario.py    (abre el navegador una vez para dar permiso)
+
+Ni .env ni token.json deben subirse a git: están en .gitignore.
+"""
+
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
+
+AQUI = Path(__file__).parent
+ENV = AQUI / ".env"
+CREDENCIALES = AQUI / "credentials.json"      # alternativa al .env
+TOKEN = AQUI / "token.json"
+
+
+def leer_env(ruta=ENV):
+    """Lee un .env sencillo. Sin dependencias: son tres variables.
+
+    Se prefiere el .env al credentials.json porque es lo estándar en un
+    repositorio: un solo sitio para los secretos, fácil de excluir de git
+    y de sustituir por variables de entorno en un servidor.
+    """
+    valores = {}
+    if ruta.exists():
+        for linea in ruta.read_text(encoding="utf-8").splitlines():
+            linea = linea.strip()
+            if not linea or linea.startswith("#") or "=" not in linea:
+                continue
+            clave, _, valor = linea.partition("=")
+            valores[clave.strip()] = valor.strip().strip('"').strip("'")
+    # Las variables del sistema mandan sobre el fichero
+    for clave in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_PROJECT_ID"):
+        if os.environ.get(clave):
+            valores[clave] = os.environ[clave]
+    return valores
+
+
+def config_oauth():
+    """Devuelve la configuración de OAuth, del .env o de credentials.json."""
+    env = leer_env()
+    cid = env.get("GOOGLE_CLIENT_ID", "")
+    sec = env.get("GOOGLE_CLIENT_SECRET", "")
+    if cid and sec and "tu-id" not in cid:
+        return {"installed": {
+            "client_id": cid,
+            "client_secret": sec,
+            "project_id": env.get("GOOGLE_PROJECT_ID", "jarvis"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "redirect_uris": ["http://localhost"],
+        }}
+    # Compatibilidad: si alguien deja el JSON descargado tal cual, también vale
+    if CREDENCIALES.exists():
+        import json
+        try:
+            return json.loads(CREDENCIALES.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    return None
+
+# Solo se pide permiso para crear y ver eventos, no para borrar el calendario
+PERMISOS = ["https://www.googleapis.com/auth/calendar.events"]
+
+ZONA = "Europe/Madrid"
+DURACION_MIN = 60          # cuánto dura un evento si no se dice otra cosa
+
+_servicio = None
+_fallo = None
+
+
+def disponible():
+    """¿Se puede usar Calendar ahora mismo? (sin intentar conectarse)"""
+    return config_oauth() is not None
+
+
+def conectar(interactivo=False):
+    """Devuelve el servicio de Calendar, o None si no se puede.
+
+    Con interactivo=True abre el navegador para pedir permiso. Eso solo debe
+    pasar cuando el usuario ejecuta este fichero a mano: si el servidor de
+    voz abriera un navegador a mitad de una conversación sería desconcertante.
+    """
+    global _servicio, _fallo
+    if _servicio:
+        return _servicio
+    config = config_oauth()
+    if not config:
+        _fallo = "faltan las credenciales de Google (mira .env.example)"
+        return None
+
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
+    except ImportError:
+        _fallo = "faltan las librerías (pip install google-api-python-client google-auth-oauthlib)"
+        return None
+
+    cred = None
+    if TOKEN.exists():
+        try:
+            cred = Credentials.from_authorized_user_file(str(TOKEN), PERMISOS)
+        except Exception:
+            cred = None
+
+    if not cred or not cred.valid:
+        if cred and cred.expired and cred.refresh_token:
+            try:
+                cred.refresh(Request())
+            except Exception as e:
+                _fallo = f"no se pudo renovar el permiso ({e})"
+                cred = None
+        elif interactivo:
+            flujo = InstalledAppFlow.from_client_config(config, PERMISOS)
+            cred = flujo.run_local_server(port=0)
+        else:
+            _fallo = "sin permiso todavía: ejecuta python calendario.py una vez"
+            return None
+
+    if not cred:
+        return None
+
+    TOKEN.write_text(cred.to_json(), encoding="utf-8")
+    try:
+        os.chmod(TOKEN, 0o600)       # el token es una credencial: que no lo lea todo el mundo
+    except Exception:
+        pass
+
+    try:
+        _servicio = build("calendar", "v3", credentials=cred,
+                          cache_discovery=False)
+        _fallo = None
+    except Exception as e:
+        _fallo = f"no se pudo abrir el calendario ({e})"
+    return _servicio
+
+
+def crear_evento(texto, cuando_iso, tiene_hora):
+    """Sube una tarea a Calendar. Devuelve el id del evento, o None.
+
+    Nunca lanza excepción: si algo falla, la tarea ya está guardada en
+    SQLite y eso es lo que de verdad importa.
+    """
+    servicio = conectar()
+    if not servicio:
+        return None
+
+    try:
+        if not cuando_iso:
+            # Sin fecha no hay evento posible: se deja solo en SQLite
+            return None
+
+        inicio = datetime.fromisoformat(cuando_iso)
+        if tiene_hora:
+            cuerpo = {
+                "summary": texto,
+                "start": {"dateTime": inicio.isoformat(), "timeZone": ZONA},
+                "end": {"dateTime": (inicio + timedelta(minutes=DURACION_MIN)).isoformat(),
+                        "timeZone": ZONA},
+                "reminders": {"useDefault": False, "overrides": [
+                    {"method": "popup", "minutes": 10}]},
+            }
+        else:
+            # Sin hora se crea como evento de día completo, no a las 00:00
+            cuerpo = {
+                "summary": texto,
+                "start": {"date": inicio.date().isoformat()},
+                "end": {"date": (inicio.date() + timedelta(days=1)).isoformat()},
+            }
+
+        ev = servicio.events().insert(calendarId="primary", body=cuerpo).execute()
+        return ev.get("id")
+    except Exception as e:
+        print(f"[calendar] no se pudo crear el evento: {e}")
+        return None
+
+
+def borrar_evento(id_evento):
+    """Quita un evento cuando la tarea se marca como hecha."""
+    servicio = conectar()
+    if not servicio or not id_evento:
+        return False
+    try:
+        servicio.events().delete(calendarId="primary",
+                                 eventId=id_evento).execute()
+        return True
+    except Exception as e:
+        print(f"[calendar] no se pudo borrar el evento: {e}")
+        return False
+
+
+def estado():
+    """Frase corta para el arranque del servidor."""
+    if not config_oauth():
+        return "calendario: desactivado (sin credenciales en .env)"
+    if not TOKEN.exists():
+        return "calendario: falta dar permiso -> ejecuta python calendario.py"
+    if conectar():
+        return "calendario: conectado a Google Calendar"
+    return f"calendario: no disponible ({_fallo})"
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.stdout.reconfigure(encoding="utf-8")
+
+    if not config_oauth():
+        print("Faltan las credenciales de Google.")
+        print("Copia .env.example como .env y rellena GOOGLE_CLIENT_ID y")
+        print("GOOGLE_CLIENT_SECRET. Se consiguen en console.cloud.google.com:")
+        print("Credenciales -> ID de cliente OAuth -> Aplicación de escritorio.")
+        sys.exit(1)
+
+    print("Abriendo el navegador para que des permiso...")
+    print("(el permiso lo das tú en tu propia cuenta; aquí no se guarda ninguna")
+    print(" contraseña, solo un token de acceso en token.json)")
+    if not conectar(interactivo=True):
+        print(f"\nNo ha funcionado: {_fallo}")
+        sys.exit(1)
+
+    print("\nPermiso concedido. Creando un evento de prueba...")
+    manana = datetime.now() + timedelta(days=1)
+    manana = manana.replace(hour=10, minute=0, second=0, microsecond=0)
+    ident = crear_evento("Prueba de Jarvis", manana.isoformat(), True)
+    if ident:
+        print(f"Evento creado ({ident}). Míralo en tu Google Calendar de mañana.")
+        if input("¿Lo borro? [s/N] ").strip().lower() == "s":
+            print("Borrado." if borrar_evento(ident) else "No se pudo borrar.")
+    else:
+        print("El permiso está bien, pero no se pudo crear el evento.")

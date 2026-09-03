@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;500&family=IBM+Plex+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --vacio:#04070b;
+  --cian:#56d9e8;
+  --cian-tenue:#1c4d58;
+  --ambar:#e6a44b;
+  --texto:#a8c8d2;
+  --acento:var(--cian);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  background:var(--vacio);
+  color:var(--texto);
+  font-family:'IBM Plex Mono',monospace;
+  height:100vh;
+  overflow:hidden;
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+  /* halo ambiental que sigue el color del estado */
+  background-image:radial-gradient(ellipse at 50% 38%,
+    color-mix(in srgb, var(--acento) 9%, transparent) 0%, transparent 62%);
+  transition:background-image .6s ease;
+}
+
+/* ---------- barra superior ---------- */
+.barra{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:18px 26px;
+  border-bottom:1px solid rgba(86,217,232,.1);
+  font-family:'Barlow Condensed',sans-serif;
+  text-transform:uppercase;letter-spacing:.28em;font-size:12px;
+  color:var(--cian-tenue);
+}
+.barra b{color:var(--acento);font-weight:500;transition:color .4s}
+
+.telemetria{display:flex;gap:22px;letter-spacing:.16em;font-size:11px}
+.telemetria span::before{content:'';display:inline-block;
+  width:5px;height:5px;border-radius:50%;
+  background:var(--cian-tenue);margin-right:7px;vertical-align:middle}
+.telemetria span.on::before{background:var(--acento);
+  box-shadow:0 0 8px var(--acento)}
+
+/* ---------- núcleo ---------- */
+.nucleo{
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:26px;min-height:0;
+}
+#escena{
+  /* 52vh chocaba con el registro (34vh) y la pista quedaba tapada.
+     Se limita también por el ancho para que no se salga en pantallas bajas. */
+  width:min(40vh,38vw,360px);height:min(40vh,38vw,360px);
+  /* el resplandor de fondo lo pone CSS: en 3D costaría un pase de bloom */
+  filter:drop-shadow(0 0 18px color-mix(in srgb, var(--acento) 45%, transparent));
+  transition:filter .5s ease;
+}
+#escena canvas{display:block;width:100%;height:100%}
+
+.estado{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:15px;letter-spacing:.42em;text-transform:uppercase;
+  color:var(--acento);font-weight:300;transition:color .4s;
+}
+
+.pista{font-size:11px;color:var(--cian-tenue);letter-spacing:.12em}
+kbd{border:1px solid var(--cian-tenue);border-radius:2px;
+  padding:1px 6px;font-family:inherit;font-size:10px}
+
+/* ---------- transcripción ---------- */
+.registro{
+  height:34vh;overflow-y:auto;
+  padding:20px 26px 26px;
+  border-top:1px solid rgba(86,217,232,.1);
+  display:flex;flex-direction:column;gap:15px;
+  scrollbar-width:thin;scrollbar-color:var(--cian-tenue) transparent;
+}
+.linea{max-width:76ch;font-size:14px;line-height:1.65;
+  animation:entrar .35s ease both}
+@keyframes entrar{from{opacity:0;transform:translateY(6px)}}
+
+.linea .quien{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:10px;letter-spacing:.3em;text-transform:uppercase;
+  display:block;margin-bottom:3px;
+}
+.tu .quien{color:var(--cian-tenue)}
+.tu .dicho{color:#7e9aa4}
+.ia .quien{color:var(--cian)}
+.ia .dicho{color:#d4eef4}
+.error .quien{color:#e06868}
+.error .dicho{color:#c98a8a;font-style:italic}
+
+/* respuestas que vienen de la agenda, no del modelo */
+.etiqueta{
+  font-style:normal;margin-left:10px;padding:1px 6px;
+  border:1px solid var(--ambar);border-radius:2px;
+  color:var(--ambar);font-size:9px;letter-spacing:.18em;
+}
+.desde-herramienta .dicho{color:#f0dcc0}
+.provisional .dicho{color:#5c7a84;font-style:italic}
+.provisional .dicho::after{
+  content:'▌';margin-left:2px;animation:parpadeo 1s steps(2) infinite}
+@keyframes parpadeo{50%{opacity:0}}
+
+/* ---------- accesibilidad ---------- */
+:focus-visible{outline:2px solid var(--acento);outline-offset:4px}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+@media (max-width:600px){
+  .telemetria{display:none}
+  .registro{height:40vh;padding:16px}
+}
+</style>
+</head>
+<body>
+
+<header class="barra">
+  <span>Jarvis · <b id="conexion">conectando</b></span>
+  <nav class="telemetria" aria-label="Estado del sistema">
+    <span id="t-oido">Oído</span>
+    <span id="t-modelo">Modelo</span>
+    <span id="t-voz">Voz</span>
+  </nav>
+</header>
+
+<main class="nucleo">
+  <!-- el núcleo 3D lo dibuja Three.js dentro de este contenedor -->
+  <div id="escena" aria-hidden="true"></div>
+
+  <p class="estado" id="estado">en reposo</p>
+  <p class="pista">Pulsa <kbd>espacio</kbd> y habla. Se env&iacute;a solo al callar, o pulsa otra vez</p>
+</main>
+
+<section class="registro" id="registro" aria-live="polite"></section>
+
+<script>
+// Estado que el motor 3D necesita leer. Va en window porque el motor
+// es un modulo ES y no comparte ambito con este script.
+const J = window.JARVIS = {nivel: 0, bandas: [], estado: 'inactivo'};
+
+/* ---------- registro de conversación ---------- */
+
+function nuevaLinea(clase, quien, texto) {
+  const reg = document.getElementById('registro');
+  const div = document.createElement('div');
+  div.className = 'linea ' + clase;
+  div.innerHTML = `<span class="quien">${quien}</span>
+                   <span class="dicho"></span>`;
+  div.querySelector('.dicho').textContent = texto || '';
+  reg.appendChild(div);
+  reg.scrollTop = reg.scrollHeight;
+  return div;
+}
+
+let provisional = null;   // la línea que se va escribiendo mientras hablas
+let respuesta = null;     // la línea que crece token a token
+
+function fijarEstado(valor) {
+  const mapa = {
+    inactivo:      ['en reposo',    'var(--cian)',  []],
+    escuchando:    ['escuchando',   'var(--cian)',  ['t-oido']],
+    transcribiendo:['transcribiendo','var(--cian)', ['t-oido']],
+    pensando:      ['pensando',     'var(--ambar)', ['t-modelo']],
+    hablando:      ['hablando',     'var(--cian)',  ['t-modelo','t-voz']],
+  };
+  const [txt, color, luces] = mapa[valor] || mapa.inactivo;
+  J.estado = valor;
+  if (valor !== 'escuchando') J.bandas = [];  // el espectro es solo del micro
+  if (valor === 'inactivo') J.nivel = 0;
+  document.getElementById('estado').textContent = txt;
+  document.documentElement.style.setProperty('--acento', color);
+  ['t-oido','t-modelo','t-voz'].forEach(id =>
+    document.getElementById(id).classList.toggle('on', luces.includes(id)));
+}
+
+/* ---------- conexión ---------- */
+
+let sock = null;
+let reintento = 0;
+
+function conectar() {
+  sock = new WebSocket(`ws://${location.host}/ws`);
+
+  sock.onopen = () => {
+    reintento = 0;
+    document.getElementById('conexion').textContent = 'en línea';
+  };
+
+  sock.onclose = () => {
+    // Antes la página se quedaba muerta si el servidor se caía o se
+    // reiniciaba, y había que recargar a mano. Ahora reintenta sola,
+    // esperando cada vez un poco más, hasta un tope de 5 segundos.
+    reintento++;
+    const espera = Math.min(5000, 400 * reintento);
+    document.getElementById('conexion').textContent =
+      `reconectando (${reintento})`;
+    document.getElementById('estado').textContent = 'sin servidor';
+    J.nivel = 0;
+    setTimeout(conectar, espera);
+  };
+
+  sock.onmessage = alMensaje;
+}
+
+const alMensaje = ev => {
+  const m = JSON.parse(ev.data);
+
+  if (m.tipo === 'nivel') {
+    J.nivel = m.valor;
+    if (m.bandas) J.bandas = m.bandas;
+  }
+
+  else if (m.tipo === 'estado') fijarEstado(m.valor);
+
+  else if (m.tipo === 'parcial') {
+    if (!provisional) provisional = nuevaLinea('tu provisional', 'Tú', '');
+    provisional.querySelector('.dicho').textContent = m.texto;
+    document.getElementById('registro').scrollTop = 1e6;
+  }
+
+  else if (m.tipo === 'usuario') {
+    // la versión buena sustituye a la provisional
+    if (!provisional) provisional = nuevaLinea('tu', 'Tú', '');
+    provisional.className = 'linea tu';
+    provisional.querySelector('.dicho').textContent = m.texto;
+    provisional = null;
+    respuesta = nuevaLinea('ia', 'Jarvis', '');
+  }
+
+  else if (m.tipo === 'token' && respuesta) {
+    respuesta.querySelector('.dicho').textContent += m.texto;
+    document.getElementById('registro').scrollTop = 1e6;
+  }
+
+  else if (m.tipo === 'fin_respuesta') respuesta = null;
+
+  else if (m.tipo === 'descartar') {
+    provisional?.remove();
+    provisional = null;
+  }
+
+  else if (m.tipo === 'saludo') {
+    // resumen del día al entrar: no lleva pregunta delante
+    const l = nuevaLinea('ia desde-herramienta', 'Jarvis', m.texto);
+    l.querySelector('.quien')
+     .insertAdjacentHTML('beforeend', '<i class="etiqueta">tu agenda</i>');
+  }
+
+  else if (m.tipo === 'herramienta') {
+    // marca la respuesta como venida de la agenda, no del modelo
+    respuesta?.classList.add('desde-herramienta');
+    respuesta?.querySelector('.quien')
+             ?.insertAdjacentHTML('beforeend',
+                `<i class="etiqueta">${m.nombre.replace(/_/g, ' ')}</i>`);
+  }
+
+  else if (m.tipo === 'error') {
+    respuesta?.remove();
+    respuesta = null;
+    nuevaLinea('ia error', 'Jarvis', m.texto);
+  }
+};
+
+conectar();
+
+/* ---------- control ---------- */
+
+function alternar() {
+  if (sock && sock.readyState === WebSocket.OPEN)
+    sock.send(JSON.stringify({cmd: 'alternar'}));
+}
+
+addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); alternar(); }
+});
+document.querySelector('.nucleo').addEventListener('click', alternar);
+</script>
+
+<!-- El nucleo 3D va aparte porque es un modulo ES. Three.js se sirve
+     desde /static, no desde un CDN: Jarvis funciona sin conexion. -->
+<script type="module" src="/static/nucleo.js"></script>
+
+</body>
+</html>

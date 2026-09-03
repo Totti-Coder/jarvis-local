@@ -1,0 +1,28 @@
+# Servidor y comunicación con el navegador
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+
+# Reconocimiento de voz (STT)
+faster-whisper==1.2.1
+
+# Modelo de lenguaje local
+ollama==0.6.2
+
+# Síntesis de voz (TTS)
+piper-tts==1.7.0
+
+# Busqueda en la web, sin clave de API
+ddgs
+
+# Captura y reproducción de audio
+sounddevice==0.5.6
+numpy==2.5.2
+
+# Aceleración por GPU de faster-whisper.
+# Sin estas dos, el modelo se carga en CUDA pero revienta al transcribir con
+# "Library cublas64_12.dll is not found or cannot be loaded".
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+
+# Solo Windows: voz de reserva por SAPI si Piper no arranca
+pywin32==312; sys_platform == "win32"

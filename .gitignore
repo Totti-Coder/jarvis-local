@@ -1,0 +1,27 @@
+# ---- SECRETOS: nunca deben salir de tu maquina ----
+.env
+credentials.json
+token.json
+# la plantilla si se sube: no lleva secretos
+!.env.example
+!credentials.EJEMPLO.json
+
+# ---- TUS DATOS ----
+# la base de datos son tus tareas y tus datos personales
+asistente.db
+*.db
+
+# ---- PESADOS QUE SE DESCARGAN SOLOS ----
+# 137 MB de modelos de voz: se bajan con un comando (ver README)
+voces/
+
+# ---- TEMPORALES ----
+__pycache__/
+*.pyc
+*.wav
+_*
+.venv/
+venv/
+.vscode/
+.idea/
+.claude/
