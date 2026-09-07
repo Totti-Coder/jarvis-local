@@ -16,6 +16,7 @@ import os
 import queue
 import re
 import site
+import sys
 import threading
 import time
 from datetime import datetime
@@ -2230,5 +2231,49 @@ async def ws(sock: WebSocket):
         micro.parar()
 
 
+def ip_en_la_red():
+    """La IP de este equipo en la red local, para poder decirla."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # No se conecta a nada: solo se pregunta al sistema por qué
+        # interfaz saldría el tráfico, y de ahí sale la IP buena.
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "tu-ip-local"
+    finally:
+        s.close()
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    # Por defecto solo escucha en este ordenador.
+    #
+    # Antes escuchaba en 0.0.0.0, o sea en TODAS las interfaces: cualquiera
+    # en la misma wifi podía abrir la interfaz y usar Jarvis entero, sin
+    # contraseña. Pulsar el micro, apagar el ordenador, mandar correos
+    # desde la cuenta de Gmail del usuario. En casa da igual; en la
+    # universidad o en una cafetería, no.
+    #
+    # Con --red vuelve a abrirse, que es lo que hace falta para verlo en
+    # el móvil o enseñárselo a alguien. Se avisa por pantalla de lo que
+    # implica, para que sea una decisión y no un descuido.
+    abierto = "--red" in sys.argv
+    host = "0.0.0.0" if abierto else "127.0.0.1"
+
+    if abierto:
+        print()
+        print("  " + "!" * 62)
+        print("  ABIERTO A LA RED LOCAL")
+        print(f"  Desde el móvil:  http://{ip_en_la_red()}:8000")
+        print()
+        print("  Cualquiera en esta wifi puede usar Jarvis: no hay")
+        print("  contraseña. Podría apagarte el ordenador o mandar")
+        print("  correos con tu cuenta. Úsalo solo en una red de fiar.")
+        print("  " + "!" * 62)
+    else:
+        print("\n  Abre http://localhost:8000")
+        print("  (solo desde este ordenador. Para el móvil: python servidor.py --red)")
+    print()
+
+    uvicorn.run(app, host=host, port=8000, log_level="warning")
