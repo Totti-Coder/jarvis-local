@@ -1,7 +1,13 @@
 """Prueba la cadena completa sin micro: audio -> Whisper -> Ollama -> voz.
 
-Uso:  python test_cadena.py
 Comprueba de una vez las cuatro etapas, sin necesidad de micrófono.
+La última habla, pero por defecto sin sonido: lo que se mide es que la
+cadena llega hasta el final, no la tarjeta de sonido, y nadie tiene por
+qué oír a Jarvis mientras corren los tests.
+
+Uso:
+    python test_cadena.py              en silencio
+    python test_cadena.py --sonido     por los altavoces
 """
 
 import sys
@@ -10,7 +16,36 @@ import time
 sys.stdout.reconfigure(encoding="utf-8")
 
 import numpy as np
-import servidor  # reutiliza la config y los modelos ya cargados del servidor
+import servidor
+
+CON_SONIDO = "--sonido" in sys.argv
+
+
+class Altavoz:
+    """Altavoz mudo: consume el audio en tiempo real pero no lo emite."""
+
+    def __init__(self):
+        self.fin = 0.0
+
+    @property
+    def active(self):
+        return time.monotonic() < self.fin
+
+    def play(self, audio, sr):
+        self.fin = time.monotonic() + len(audio) / float(sr)
+
+    def get_stream(self):
+        return self if self.active else None
+
+    def stop(self):
+        self.fin = 0.0
+
+
+if not CON_SONIDO:
+    _mudo = Altavoz()
+    servidor.sd.play = _mudo.play
+    servidor.sd.get_stream = _mudo.get_stream
+    servidor.sd.stop = _mudo.stop
 
 
 def paso(titulo):
@@ -82,7 +117,7 @@ if not respuesta.strip():
     problemas.append("respuesta vacía")
 print("PROBLEMAS:", problemas if problemas else "ninguno")
 
-paso("5. Leerla en voz alta")
+paso("5. Leerla en voz alta" + ("" if CON_SONIDO else "  (en silencio)"))
 t0 = time.time()
 servidor.hablar(respuesta)
 print(f"hablado en {time.time()-t0:.1f}s")

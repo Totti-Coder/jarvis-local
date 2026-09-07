@@ -37,6 +37,10 @@ CASOS = [
     ("¿Qué me queda por hacer?",                     "listar_tareas", "consultar"),
     ("Dime mis tareas pendientes",                   "listar_tareas", "consultar"),
     ("¿Qué tengo entre las dos y las cinco?",        "listar_tareas", "consultar"),
+    # el fin de semana son tres días, y con rodeo el modelo se dejaba el filtro
+    ("¿Qué tengo el fin de semana?",                 "listar_tareas", "consultar"),
+    ("¿Qué planes tengo para el fin de semana?",     "listar_tareas", "consultar"),
+    ("¿Tengo algo este finde?",                      "listar_tareas", "consultar"),
     # preguntar por UNA tarea concreta, no por una franja
     ("¿A qué hora tengo el test de matemáticas?",    "listar_tareas", "consultar"),
     ("¿Cuándo tengo el dentista?",                   "listar_tareas", "consultar"),
@@ -73,7 +77,46 @@ CASOS = [
     ("¿Qué ha pasado hoy en las noticias?",           "buscar_en_web", "buscar"),
     ("¿Quién ganó la Liga en 2026?",                  "buscar_en_web", "buscar"),
 
+    # ---- control del ordenador ----
+    ("Abre Spotify",                                 "abrir_programa", "sistema"),
+    # "administrador de TAREAS" no es apuntar una tarea
+    ("Abre el administrador de tareas",              "abrir_programa", "sistema"),
+    ("Abre el panel de control",                     "abrir_programa", "sistema"),
+    ("Sí, abre la calculadora",                      "abrir_programa", "sistema"),
+    ("Reinicia el ordenador",                        "control_sistema", "sistema"),
+    ("Cierra Spotify",                               "cerrar_programa", "sistema"),
+    ("Ciérrame el navegador",                        "cerrar_programa", "sistema"),
+    ("Quítame el Discord",                           "cerrar_programa", "sistema"),
+    ("Cierra la calculadora",                        "cerrar_programa", "sistema"),
+    ("Ábreme el navegador",                          "abrir_programa", "sistema"),
+    ("Abre la calculadora",                          "abrir_programa", "sistema"),
+    ("Sube el volumen",                              "control_sistema", "sistema"),
+    ("Bloquea la pantalla",                          "control_sistema", "sistema"),
+    ("Apaga el ordenador",                           "control_sistema", "sistema"),
+    ("Cancela el apagado",                           "control_sistema", "sistema"),
+
+    # ---- correo ----
+    ("Mándale un correo a Ana diciéndole que llego tarde", "enviar_correo", "correo"),
+    ("Escríbele a mi jefe que mañana trabajo desde casa",  "enviar_correo", "correo"),
+    ("Manda un email a Luis con el informe",               "enviar_correo", "correo"),
+    # sin decir a quién ni qué: Jarvis lo va preguntando paso a paso
+    ("Quiero mandar un correo electrónico",                "enviar_correo", "correo"),
+    ("Escribe un correo",                                  "enviar_correo", "correo"),
+    # leer y escribir son la misma palabra ("correo") con verbos opuestos
+    ("¿Tengo correos nuevos?",                             "leer_correos", "correo"),
+    ("¿Qué me han mandado hoy?",                           "leer_correos", "correo"),
+    ("Léeme los correos",                                  "leer_correos", "correo"),
+    ("Resúmeme lo que me ha llegado al correo",            "leer_correos", "correo"),
+    ("¿Me ha escrito Ana?",                                "leer_correos", "correo"),
+    ("¿Quién me ha escrito?",                              "leer_correos", "correo"),
+    ("Mira mi bandeja de entrada",                         "leer_correos", "correo"),
+
     # ---- conversación: NADA debe tocar la agenda ----
+    # estas mencionan apagar pero NO son ordenes: apagar es irreversible
+    ("El ordenador va muy lento",                    None, "charla"),
+    ("¿Se apaga solo el ordenador?",                 None, "charla"),
+    ("Ayer se me apagó el ordenador",                None, "charla"),
+    ("El PC se calienta mucho",                      None, "charla"),
     ("¿Qué tal has pasado el día?",                  None, "charla"),
     ("¿Cómo ha ido la mañana?",                      None, "charla"),
     ("¿Qué has hecho hoy?",                          None, "charla"),
@@ -88,6 +131,10 @@ CASOS = [
     ("Gracias, muy amable",                          None, "charla"),
     ("Vale, perfecto",                               None, "charla"),
     ("¿Me podrías decir mi nombre?",                 None, "charla"),
+    # un "sí" o un "no" suelto no es una orden: solo vale respondiendo
+    ("Sí",                                           None, "charla"),
+    ("Sí, hazlo",                                    None, "charla"),
+    ("No, déjalo",                                   None, "charla"),
 ]
 
 ver_todo = "--todo" in sys.argv
@@ -124,7 +171,7 @@ print("\n" + "-" * 74)
 print("POR CATEGORÍA")
 print("-" * 74)
 for cat in ("apuntar", "consultar", "completar", "reloj", "recordar",
-            "buscar", "charla"):
+            "buscar", "sistema", "correo", "charla"):
     if not total_categoria[cat]:
         continue
     n, t = por_categoria[cat], total_categoria[cat]

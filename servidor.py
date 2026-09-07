@@ -10,6 +10,7 @@ Abrir:     http://localhost:8000
 
 import asyncio
 import glob
+import hashlib
 import json
 import os
 import queue
@@ -55,7 +56,9 @@ from faster_whisper.vad import VadOptions, get_speech_timestamps
 
 import buscar
 import calendario
+import correo
 import memoria
+import sistema
 
 # ---------------------------------------------------------------
 # CONFIGURACIÓN
@@ -161,6 +164,7 @@ stt_rapido = cargar_whisper(MODELO_RAPIDO)
 stt_bueno = cargar_whisper(MODELO_BUENO)
 print("Listo.")
 print(f"  {calendario.estado()}")
+print(f"  {correo.estado()}")
 
 
 # ---------------------------------------------------------------
@@ -552,6 +556,84 @@ HERRAMIENTAS = [
                                         "Liga española', 'tiempo Madrid mañana'"}},
             "required": ["consulta"]}}},
     {"type": "function", "function": {
+        "name": "abrir_programa",
+        "description": "Abre una aplicación del ordenador: el navegador, Spotify, "
+                       "la calculadora, el explorador de archivos, VS Code, el "
+                       "bloc de notas, el correo, los ajustes o la terminal.",
+        "parameters": {"type": "object", "properties": {
+            "programa": {"type": "string",
+                         "description": "Qué abrir, con las palabras del usuario: "
+                                        "'spotify', 'el navegador', 'la calculadora'"}},
+            "required": ["programa"]}}},
+    {"type": "function", "function": {
+        "name": "enviar_correo",
+        "description": "Escribe y manda un correo por Gmail a alguien de la agenda "
+                       "del usuario. Úsalo cuando pida escribir, mandar o enviar "
+                       "un correo, un email o un mensaje a una persona.",
+        "parameters": {"type": "object", "properties": {
+            "destinatario": {"type": "string",
+                             "description": "A quién, con el nombre que usó el "
+                                            "usuario: 'Ana', 'mi jefe'. NUNCA una "
+                                            "dirección de correo: se saca de su agenda."},
+            "asunto": {"type": "string",
+                       "description": "Asunto corto, de menos de ocho palabras"},
+            "mensaje": {"type": "string",
+                        "description": "El correo ya redactado y completo, con "
+                                       "saludo y despedida, a partir de lo que "
+                                       "pidió el usuario. Escríbelo tú bien, no "
+                                       "copies su frase tal cual."}},
+            "required": ["destinatario", "mensaje"]}}},
+    {"type": "function", "function": {
+        "name": "leer_correos",
+        "description": "Mira la bandeja de entrada de Gmail del usuario: si "
+                       "le ha llegado algo nuevo, quién le ha escrito, de qué "
+                       "van los correos o un resumen de lo recibido. Es para "
+                       "correos que LE HAN LLEGADO a él. Para escribir y "
+                       "mandar uno se usa enviar_correo, no esta.",
+        "parameters": {"type": "object", "properties": {
+            "solo_nuevos": {"type": "boolean",
+                            "description": "true si pregunta por lo nuevo, lo "
+                                           "sin leer o lo que le ha llegado; "
+                                           "false si pide sus últimos correos "
+                                           "en general"},
+            "de": {"type": "string",
+                   "description": "Nombre de la persona, si pregunta si le ha "
+                                  "escrito alguien concreto: 'Ana', 'mi jefe'. "
+                                  "Vacío si pregunta en general."}},
+            "required": []}}},
+    {"type": "function", "function": {
+        "name": "cerrar_programa",
+        "description": "Cierra una aplicación que está abierta ahora mismo: "
+                       "'cierra spotify', 'cierra el navegador', 'quita smite'. "
+                       "Se cierra con normalidad, así que si hay algo sin guardar "
+                       "la aplicación lo preguntará.",
+        "parameters": {"type": "object", "properties": {
+            "programa": {"type": "string",
+                         "description": "Qué cerrar, con las palabras del usuario"}},
+            "required": ["programa"]}}},
+    {"type": "function", "function": {
+        "name": "ejecutar_atajo",
+        "description": "Lanza una tarea que el usuario tiene configurada en su "
+                       "fichero de atajos: copias de seguridad, scripts, rutinas "
+                       "suyas. Usalo cuando pida algo por su nombre y no encaje "
+                       "en ninguna otra herramienta.",
+        "parameters": {"type": "object", "properties": {
+            "nombre": {"type": "string",
+                       "description": "Nombre del atajo, con las palabras del usuario"}},
+            "required": ["nombre"]}}},
+    {"type": "function", "function": {
+        "name": "control_sistema",
+        "description": "Controla el ordenador: apagarlo, reiniciarlo, bloquear la "
+                       "pantalla, cancelar un apagado programado, o subir, bajar "
+                       "y silenciar el volumen.",
+        "parameters": {"type": "object", "properties": {
+            "accion": {"type": "string",
+                       "enum": ["apagar", "reiniciar", "suspender", "bloquear",
+                                "cancelar", "subir volumen", "bajar volumen",
+                                "silenciar", "captura", "minimizar"],
+                       "description": "Exactamente una de las opciones de la lista"}},
+            "required": ["accion"]}}},
+    {"type": "function", "function": {
         "name": "recordar_dato",
         "description": "Guarda un dato que el usuario cuenta SOBRE SÍ MISMO o su "
                        "entorno, y que no es algo que tenga que hacer: cómo se "
@@ -560,8 +642,14 @@ HERRAMIENTAS = [
                        "hace ni se completa, solo se recuerda.",
         "parameters": {"type": "object", "properties": {
             "dato": {"type": "string",
-                     "description": "El dato en tercera persona: 'se llama Toti', "
-                                    "'vive en Madrid', 'es desarrollador'"}},
+                     "description": "El dato como FRASE COMPLETA en tercera "
+                                    "persona, diciendo SIEMPRE de quién se habla. "
+                                    "'me llamo Toti' -> 'se llama Toti'. "
+                                    "'mi novia se llama Verónica' -> 'su novia se "
+                                    "llama Verónica'. 'mi jefe es Luis' -> 'su jefe "
+                                    "es Luis'. NUNCA pierdas de quién es el dato: "
+                                    "'se llama Verónica' a secas sería un error, "
+                                    "porque parece que el usuario se llama así."}},
             "required": ["dato"]}}},
     {"type": "function", "function": {
         "name": "completar_tarea",
@@ -606,10 +694,34 @@ Eso pregunta por su agenda, NO por el reloj.
 Usa que_hora_es SOLO cuando pregunte qué hora es AHORA o en qué fecha
 estamos, sin referirse a ninguna tarea suya.
 
-Usa recordar_dato cuando cuente algo SOBRE SÍ MISMO que no hay que hacer:
-"me llamo X", "soy X", "vivo en X", "mi hermana se llama X",
-"soy alérgico a X", "me gusta X", "trabajo en X".
+Usa abrir_programa cuando pida abrir una aplicación:
+"abre spotify", "pon música", "ábreme el navegador", "abre la calculadora".
+
+Usa enviar_correo cuando pida escribir o mandar un correo a alguien:
+"mándale un correo a Ana diciendo que llego tarde", "escríbele a mi jefe".
+Tú REDACTAS el mensaje completo, con saludo y despedida, a partir de lo
+que te ha dicho. El destinatario va con su NOMBRE, nunca con su dirección.
+
+Usa cerrar_programa cuando pida cerrar una que ya está abierta:
+"cierra spotify", "cierra el navegador", "quítame el discord", "sal del juego".
+
+Usa control_sistema para el ordenador en sí:
+"apaga el ordenador", "reinicia", "bloquea la pantalla", "cancela el apagado",
+"sube el volumen", "baja el volumen", "silencia".
+
+OJO con apagar y reiniciar: solo si lo PIDE. "El ordenador va lento" o
+"¿se apaga solo?" NO son órdenes de apagado.
+
+Usa recordar_dato cuando cuente algo sobre sí mismo o sobre su gente, que no
+hay que hacer: "me llamo X", "soy X", "vivo en X", "mi novia se llama X",
+"mi hermana es X", "soy alérgico a X", "me gusta X", "trabajo en X".
 Eso no son tareas: no se hacen ni se completan, solo se recuerdan.
+
+El dato va en tercera persona y SIEMPRE con su sujeto:
+"me llamo Toti"                -> "se llama Toti"
+"mi novia se llama Verónica"   -> "su novia se llama Verónica"
+"mi hermana vive en Vigo"      -> "su hermana vive en Vigo"
+Nunca lo recortes a "se llama Verónica": se perdería de quién hablas.
 
 anadir_tarea SOLO si el usuario dice QUÉ hay que hacer. Si la frase no
 nombra ninguna acción concreta, no la apuntes. "¿Tengo algo que hacer esta
@@ -637,6 +749,10 @@ FUNCIONES = {
     "listar_tareas": lambda cuando="", texto="", **k: memoria.listar_tareas(cuando, texto),
     "completar_tarea": lambda texto="", **k: memoria.completar_tarea(texto),
     "recordar_dato": lambda dato="", **k: memoria.recordar_dato(dato),
+    "abrir_programa": lambda programa="", **k: sistema.abrir_programa(programa),
+    "cerrar_programa": lambda programa="", **k: sistema.cerrar_programa(programa),
+    "control_sistema": lambda accion="", **k: sistema.ejecutar_accion(accion),
+    "ejecutar_atajo": lambda nombre="", **k: sistema.ejecutar_atajo(nombre),
 }
 
 
@@ -659,9 +775,13 @@ def prompt_con_fecha():
     # dicho cómo te llamas, tiene que poder responder cuando se lo preguntes.
     datos = memoria.datos_conocidos()
     if datos:
-        partes.append("LO QUE SABES DEL USUARIO\n" +
-                      "\n".join(f"- El usuario {d}" for d in datos) +
-                      "\nÚsalo si viene a cuento, sin repetirlo cada vez.")
+        partes.append(
+            "LO QUE SABES DEL USUARIO\n" +
+            "\n".join(f"- {memoria.como_frase(d)}" for d in datos) +
+            "\n\nEso es TODO lo que sabes de él, y es fiable: si la respuesta "
+            "está ahí, dala directamente sin decir que no tienes información. "
+            "Si no está, dilo y ya. No inventes nada sobre su vida ni sobre "
+            "las personas que menciona.")
     return "\n\n".join(partes)
 
 
@@ -761,17 +881,34 @@ VERBOS_PREGUNTA = ("explica", "explicame", "dime", "cuentame", "describe",
                    "define", "sabes", "conoces", "puedes decirme", "que es")
 
 
+# Marcas de que la frase habla del usuario o de su gente. Sin alguna de
+# estas, no es un dato personal por mucho que lo parezca.
+MARCAS_PERSONALES = (
+    r"\bme\b", r"\bmi\b", r"\bmis\b", r"\bmio\b", r"\bmia\b", r"\bconmigo\b",
+    r"\bsoy\b", r"\bestoy\b", r"\btengo\b", r"\bvivo\b", r"\btrabajo\b",
+    r"\bllamo\b", r"\bnaci\b", r"\bprefiero\b", r"\bodio\b", r"\bjuego\b",
+    r"\bestudio\b", r"\bquiero\b", r"\bsuelo\b",
+)
+
+
 def parece_dato_personal(frase):
     """¿Está el usuario contándome algo suyo, o pidiéndome información?
 
-    "Me llamo Toti" es un dato. "¿Me podrías decir mi nombre?" es una
-    pregunta sobre ese dato, y guardarla sería absurdo. Lo mismo con
-    "Explícame qué es una API": pide, no cuenta.
+    Tres cosas distintas que no son un dato personal, y las tres pasaban:
+      - "¿Me podrías decir mi nombre?"  pregunta por el dato, no lo aporta
+      - "Explícame qué es una API"      pide información
+      - "Hoy hace buen día"             habla del tiempo, no de él
+
+    Ese último era el peor: escribía en la memoria una observación sobre
+    el clima, y luego se la leía en el prompt de todos los turnos.
     """
     t = _sin_tildes(frase).strip()
     if es_pregunta(t):
         return "recuerda" in t          # "recuerda que soy X" sí vale
-    return not any(t.startswith(v) for v in VERBOS_PREGUNTA)
+    if any(t.startswith(v) for v in VERBOS_PREGUNTA):
+        return False
+    # Tiene que hablar de él o de los suyos
+    return any(re.search(m, t) for m in MARCAS_PERSONALES)
 
 
 # Señales de que la pregunta va de algo que CAMBIA y no está en el modelo.
@@ -861,11 +998,304 @@ def cuando_inventado(cuando, frase):
     return not any(p in dicho for p in palabras)
 
 
+# Verbos con los que se ORDENA algo al ordenador. Sin uno de estos, la
+# frase es un comentario y no debe mover nada.
+VERBOS_SISTEMA = (
+    r"apag", r"reinici", r"suspend", r"bloque", r"cancel",
+    r"\bsube\b", r"\bsubir\b", r"\bsubeme\b",
+    r"\bbaja\b", r"\bbajar\b", r"\bbajame\b",
+    r"silenci", r"\bmutea", r"minimiz", r"captur",
+    r"\bhaz\b", r"\bhazme\b", r"\bpon\b", r"\bponme\b",
+    r"\bquita\b", r"\bcierra\b", r"\bmuestra\b", r"\benseñame\b",
+    r"\bvolumen\b",
+)
+
+
+AFIRMATIVAS = {"si", "sip", "vale", "confirmo", "confirmado", "adelante",
+               "hazlo", "dale", "claro", "afirmativo", "correcto", "eso",
+               "ok", "okay", "venga", "exacto", "efectivamente", "porfa"}
+
+NEGATIVAS = {"no", "nop", "nunca", "jamas", "para", "cancela", "cancelalo",
+             "cancelar", "anula", "olvidalo", "dejalo", "mejor", "espera"}
+
+
+def solo_es_respuesta(frase):
+    """¿Es la frase solo un "sí" o un "no", sin nada más?
+
+    Sin esto, un "sí" suelto se enrutaba a completar_tarea, y "sí, hazlo"
+    llegó a proponer cerrar_programa: un asentimiento perdido podía cerrarte
+    una aplicación. Si no hay nada pendiente que confirmar, un monosílabo
+    no debe mover nada.
+    """
+    palabras = re.sub(r"[^\w\s]", " ", _sin_tildes(frase)).split()
+    if not palabras or len(palabras) > 3:
+        return False
+    if palabras[0] not in AFIRMATIVAS and palabras[0] not in NEGATIVAS:
+        return False
+    # "sí, apaga el ordenador" sí lleva orden dentro: eso no es un monosílabo
+    return not any(p in VERBOS_TAREA or re.search(r"^(abre|cierra|apaga|"
+                   r"reinicia|sube|baja|pon|quita|busca)", p) for p in palabras[1:])
+
+
+# Comandos que manda el popup del correo. En una constante porque se
+# miran en dos sitios (el bucle normal y el de interrupcion), y tenerlos
+# escritos dos veces ya hizo que uno se quedara sin actualizar.
+CMDS_BORRADOR = ("borrador_enviar", "borrador_cancelar", "borrador_destinatario")
+
+
+def pide_dejarlo(frase):
+    """¿Quiere abandonar el correo que se está montando a medias?
+
+    Se exige que sea una frase CORTA: "déjalo" abandona, pero "dile que
+    lo deje para mañana" es el texto del correo, no una cancelación.
+    Contestar un paso con algo largo siempre es contenido.
+    """
+    b = _sin_tildes(frase or "").strip(" .,!¡?¿")
+    if not b or len(b.split()) > 3:
+        return False
+    return bool(re.search(r"\b(dejalo|dejemoslo|cancela|cancelalo|olvidalo|"
+                          r"olvidate|da igual|no importa|nada)\b", b))
+
+
+def es_afirmacion(frase):
+    """¿Ha dicho que sí a lo que se le acaba de preguntar?
+
+    Se mira solo la PRIMERA palabra, que es la que decide: "sí, hazlo",
+    "vale, adelante" y "sí por favor" son que sí; "no, déjalo" es que no.
+    Ante cualquier otra cosa se entiende que no, porque apagar el
+    ordenador equivocándose no tiene arreglo.
+    """
+    palabras = re.sub(r"[^\w\s]", " ", _sin_tildes(frase)).split()
+    if not palabras:
+        return False
+    if palabras[0] in NEGATIVAS:
+        return False
+    return palabras[0] in AFIRMATIVAS
+
+
+def pide_accion_sistema(frase):
+    """¿Es una orden para el ordenador, o solo un comentario sobre él?
+
+    Salió de la evaluación: "el PC se calienta mucho" proponía subir el
+    volumen, y "va muy lento" reiniciar. Son quejas. Una orden lleva verbo
+    de mando, o va envuelta en una petición ("puedes bajar el volumen").
+    """
+    t = _sin_tildes(frase)
+    if es_pregunta(t) and not re.search(r"\b(puedes|podrias|me)\b", t):
+        return False
+    return any(re.search(v, t) for v in VERBOS_SISTEMA)
+
+
+def pide_apagar(frase):
+    """¿Está pidiendo apagar o reiniciar, o solo lo ha mencionado?
+
+    Apagar es la única acción de la que no se vuelve: si había trabajo sin
+    guardar, se pierde. Y Whisper se equivoca —en este proyecto se le ha
+    visto oír "qué te harás" donde se dijo "qué tal has"—, así que no basta
+    con que el modelo lo proponga: la frase tiene que contener de verdad un
+    verbo de apagado en imperativo o en petición.
+    """
+    t = _sin_tildes(frase)
+    if es_pregunta(t) and not re.search(r"\b(puedes|podrias|me)\b", t):
+        return False          # "¿se apaga solo?" no es una orden
+    return bool(re.search(
+        r"\b(apaga|apagame|apagar|apague|reinicia|reiniciame|reiniciar|"
+        r"reinicie|suspende|suspender)\b", t))
+
+
+def prompt_router():
+    """El prompt del router con lo que se sabe del usuario.
+
+    Hace falta sobre todo para los correos: sin saber cómo se llama, el
+    modelo los firmaba con "[nombre del usuario]", un hueco sin rellenar
+    que se habría enviado tal cual.
+    """
+    datos = memoria.datos_conocidos()
+    if not datos:
+        return PROMPT_ROUTER
+    return (PROMPT_ROUTER + "\n\nDATOS DEL USUARIO (para firmar correos y "
+            "para saber de quién habla):\n" +
+            "\n".join(f"- {memoria.como_frase(d)}" for d in datos) +
+            "\nNunca dejes huecos como [nombre] en un correo: si no sabes "
+            "algo, no lo pongas.")
+
+
+PROMPT_REDACTOR = """Escribes los correos del usuario. Te dan un encargo y
+devuelves SOLO el texto del correo, listo para enviar.
+
+REGLAS
+- Devuelve únicamente el cuerpo. Nada de "Asunto:", ni comillas, ni
+  markdown, ni explicaciones tuyas, ni comentarios sobre lo que has hecho.
+- Saludo, cuerpo y despedida. Breve: tres o cuatro frases como mucho.
+- El tono lo marca el encargo. Si pide algo formal, trata de usted.
+- NO INVENTES NADA que no esté en el encargo: ni fechas, ni horas, ni
+  sitios, ni motivos, ni nombres de personas. Si el encargo no dice
+  cuándo, el correo no dice cuándo.
+- Firma con el nombre del usuario. Si no lo sabes, termina sin firma:
+  no te inventes un nombre, y nunca escribas huecos como [nombre].
+- Si el encargo ya viene redactado como un mensaje entero, respétalo y
+  límitate a darle forma de correo.
+- Son correos normales entre conocidos: escríbelos sin más.
+- En español."""
+
+# El modelo a veces contesta que no en vez de escribir. Meter eso en el
+# cuerpo sería mandarle a alguien "Lo siento, pero no puedo cumplir con
+# esa solicitud", así que se detecta y se vuelve a intentar.
+# Lo que distingue una negativa de un correo NO es cómo empieza, sino de
+# qué habla: una negativa habla de LA PETICIÓN ("no puedo cumplir con esa
+# solicitud"), un correo habla con el destinatario. Mirando solo el
+# principio se descartaban correos buenos: "Lo siento, Ana. Me retrasé y
+# llegué tarde a la cena" empieza igual que una negativa y es el correo.
+RECHAZO = re.compile(
+    r"(?i)(no puedo (cumplir|ayudarte con (eso|esto)|generar|redactar|crear)|"
+    r"no voy a (poder )?(escribir|redactar|generar)|"
+    r"no (tengo|dispongo de) (permiso|la capacidad|la posibilidad)|"
+    r"no estoy (autorizad|programad|capacitad)|"
+    r"esa (solicitud|petici[oó]n)|con esa solicitud|"
+    r"como (modelo de lenguaje|asistente de ia|una ia)\b|"
+    r"i'?m sorry,? (but )?i (can'?t|cannot)|i cannot (fulfill|comply))")
+
+
+def parece_rechazo(texto):
+    """¿Ha contestado que no, en vez de escribir el correo?
+
+    Además de la frase delatora se exige que sea corto y de una sola
+    tirada: un correo de verdad tiene saludo y despedida y ocupa varias
+    líneas, así que uno que mencione de pasada "no puedo ayudarte" se
+    salva de que lo tomen por una negativa.
+    """
+    t = (texto or "").strip()
+    if not t or len(t) > 220 or "\n" in t:
+        return False
+    return bool(RECHAZO.search(t))
+
+
+def nombre_del_usuario():
+    """Cómo se llama el usuario, para firmar los correos. "" si no consta.
+
+    Se queda con el PRIMERO que se guardó. Si hay varios es que algo se
+    apuntó mal —pasó: contar quién era la novia acabó guardado como el
+    nombre del propio usuario— y el más viejo suele ser el bueno.
+    """
+    for dato in memoria.datos_conocidos():
+        m = re.search(r"(?i)(?:me llamo|se llama|soy)\s+"
+                      r"([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,20})", dato)
+        if m:
+            return m.group(1).capitalize()
+    return ""
+
+
+def saludo_para(destinatario, encargo):
+    """El saludo con el que se le arranca la respuesta al modelo.
+
+    Sale del encargo: si pide algo formal, se abre de usted. Los dos son
+    válidos sin saber si quien recibe es hombre o mujer, que no consta.
+    """
+    quien = (destinatario or "").strip()
+    if re.search(r"(?i)\bformal|\bseri[oa]|\bde usted|\beducad|\bprofesional",
+                 encargo or ""):
+        return f"Buenos días{', ' + quien if quien else ''}:\n\n"
+    return f"Hola{' ' + quien if quien else ''},\n\n"
+
+
+def redactar_correo(encargo, destinatario="", asunto=""):
+    """Convierte un encargo hablado en el texto de un correo.
+
+    El usuario dice "mándale un mensaje formal pidiéndole que venga a mi
+    casa", no el correo palabra por palabra. Dictar un correo entero es
+    incómodo y Whisper se come cosas; describir lo que quieres es lo
+    natural. Esto lo escribe.
+
+    Lo que salga va SIEMPRE al popup para revisarlo antes de enviarlo,
+    así que un borrador flojo se arregla en dos segundos con el teclado.
+    Devuelve el encargo tal cual si el modelo falla: mejor eso que nada.
+    """
+    # Aquí se le pasa SOLO el nombre, no todo lo que Jarvis sabe del
+    # usuario. Para redactar no hace falta nada más que la firma, y
+    # meterle la vida entera tenía dos efectos malos: colaba datos
+    # personales en correos que no venían a cuento, y con ciertos temas
+    # el modelo se cerraba en banda y contestaba "no puedo cumplir con
+    # esa solicitud" en vez de escribir. Medido: 1 de 3 encargos salía
+    # con todos los datos; 3 de 3 pasándole solo el nombre.
+    sistema = PROMPT_REDACTOR
+    quien = nombre_del_usuario()
+    if quien:
+        sistema += f"\n\nEl usuario se llama {quien}: firma con ese nombre."
+    else:
+        sistema += "\n\nNo sabes cómo se llama el usuario: termina sin firma."
+
+    cabecera = (f"Para: {destinatario or 'un conocido'}\n"
+                f"Asunto: {asunto or '(sin asunto)'}\n")
+
+    # Dos intentos. El primero le deja elegir el registro: para un encargo
+    # formal escribe "Estimada Ana" por su cuenta, y eso se pierde si se
+    # le dicta el saludo.
+    #
+    # El segundo es la red de seguridad, y funciona porque le EMPIEZA la
+    # respuesta: con "Hola Ana," ya puesto en su turno, no puede arrancar
+    # con "lo siento, no puedo cumplir con esa solicitud". El modelo se
+    # negaba en 1 de cada 4 encargos, al azar y sin que hubiera una frase
+    # concreta que lo disparara. Medido con el arranque puesto: 6 de 6.
+    saludo = saludo_para(destinatario, encargo)
+    intentos = [
+        (cabecera + f"Encargo: {encargo}", ""),
+        (cabecera + f"Contenido que debe transmitir el correo: {encargo}", saludo),
+    ]
+
+    for n, (peticion, arranque) in enumerate(intentos, 1):
+        mensajes = [{"role": "system", "content": sistema},
+                    {"role": "user", "content": peticion}]
+        if arranque:
+            mensajes.append({"role": "assistant", "content": arranque})
+        try:
+            r = ollama.chat(
+                model=MODELO_LLM, messages=mensajes,
+                # Más bajo que en la conversación: aquí no se busca gracia,
+                # sino que diga lo encargado y nada más.
+                options={"num_ctx": NUM_CTX, "temperature": 0.2},
+            )
+            # Con arranque, el modelo devuelve solo la continuación
+            texto = arranque + (r["message"]["content"] or "").strip()
+        except Exception as e:
+            print(f"[correo] no se pudo redactar: {e}")
+            return encargo
+
+        if parece_rechazo(texto):
+            print(f"[correo] intento {n}: se negó ({texto[:50]!r})")
+            continue
+        limpio = limpiar_correo(texto)
+        if limpio:
+            return limpio
+
+    # Los dos fallaron: se deja lo dicho tal cual. Queda soso, pero el
+    # popup está delante y se arregla escribiendo.
+    print("[correo] no hubo manera: se deja el encargo tal cual")
+    return encargo
+
+
+def limpiar_correo(texto):
+    """Quita lo que el modelo añade de su cosecha y no es el correo."""
+    # A veces contesta con el correo entre comillas, o precedido de
+    # "Aquí tienes el correo:". Nada de eso se envía.
+    texto = re.sub(r"(?im)^\s*(aqu[íi] tienes|te he escrito|este es el correo)"
+                   r"[^\n:]*:\s*", "", texto).strip()
+    texto = re.sub(r"(?im)^\s*(asunto|subject)\s*:.*$", "", texto).strip()
+    texto = re.sub(r"^[\"“”'`]+|[\"“”'`]+$", "", texto).strip()
+    # Markdown: se leería en voz alta y quedaría fatal por escrito
+    texto = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", texto)
+    # Huecos sin rellenar: "[nombre del usuario]" enviado tal cual es peor
+    # que no firmar. Se quitan aunque el prompt diga que no los ponga.
+    texto = re.sub(r"\[[^\]]{2,40}\]", "", texto)
+    texto = re.sub(r"[ \t]+", " ", texto)
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    return texto.strip(" ,\n")
+
+
 def enrutar(pregunta):
     """¿Hace falta una herramienta? Devuelve (nombre, argumentos) o (None, None)."""
     r = ollama.chat(
         model=MODELO_LLM,
-        messages=[{"role": "system", "content": PROMPT_ROUTER},
+        messages=[{"role": "system", "content": prompt_router()},
                   {"role": "user", "content": pregunta}],
         tools=HERRAMIENTAS,
         options={"num_ctx": NUM_CTX, "temperature": 0.0},
@@ -876,6 +1306,23 @@ def enrutar(pregunta):
 
     nombre = llamadas[0].function.name
     args = dict(llamadas[0].function.arguments)
+
+    # Un "sí" o un "no" suelto no es una orden. Solo significa algo cuando
+    # responde a una pregunta, y de eso se encarga el turno anterior.
+    if solo_es_respuesta(pregunta):
+        print(f"[router] descarto {nombre}: {pregunta!r} es solo un sí o un no")
+        return None, None
+
+    # "Abre el administrador de TAREAS" no es apuntar una tarea. La palabra
+    # coincide y el router picaba: se apuntó "abrir el administrador de
+    # tareas" en la agenda en vez de abrirlo. Si la frase empieza pidiendo
+    # abrir algo, es abrir algo.
+    if nombre in ("anadir_tarea", "listar_tareas") and re.match(
+            r"^\s*(abre|abreme|abrir|abra|lanza|lanzame|ejecuta|arranca|pon)\b",
+            _sin_tildes(pregunta)):
+        objeto = re.sub(r"^\s*\w+\s*", "", pregunta.strip(), count=1)
+        print(f"[router] {nombre} -> abrir_programa: {pregunta!r} pide abrir algo")
+        return "abrir_programa", {"programa": objeto or pregunta}
 
     # Pedir que se borre algo NUNCA puede acabar creando una tarea nueva.
     # Es el fallo más desconcertante de todos: pides quitar el dentista y
@@ -910,11 +1357,93 @@ def enrutar(pregunta):
         print(f"[router] quito cuando={args.get('cuando')!r}: no lo dijo el usuario")
         args["cuando"] = ""
 
+    # Lo contrario del guard de arriba: el modelo a veces se DEJA el momento
+    # cuando la pregunta lleva rodeo. "¿Qué planes tengo PARA el fin de
+    # semana?" salía sin filtro, y sin filtro se contesta con toda la lista
+    # pendiente: el examen del martes incluido. Se recupera de la frase
+    # original, que es la única fuente que no depende de que el modelo copie.
+    if nombre == "listar_tareas" and not (args.get("cuando") or "").strip():
+        rescatado = momento_en(pregunta)
+        if rescatado:
+            print(f"[router] recupero cuando={rescatado!r}: estaba en la frase")
+            args["cuando"] = rescatado
+
+    # Ninguna acción del sistema se dispara con un comentario. "El PC se
+    # calienta mucho" llegó a proponer subir el volumen, y "va lento" a
+    # reiniciar: son quejas, no órdenes. Tiene que haber verbo de mando.
+    if nombre == "control_sistema":
+        accion = _sin_tildes(args.get("accion", ""))
+        if not pide_accion_sistema(pregunta):
+            print(f"[router] descarto {accion!r}: {pregunta!r} es un comentario")
+            return None, None
+        # Y apagar o reiniciar, además, exigen su verbo concreto
+        if ("apagar" in accion or "reiniciar" in accion) and not pide_apagar(pregunta):
+            print(f"[router] descarto {accion!r}: {pregunta!r} no lo pide claramente")
+            return None, None
+
     if nombre == "buscar_en_web" and not merece_busqueda(pregunta):
         print(f"[router] descarto buscar_en_web: {pregunta!r} no pide nada actual")
         return None, None
 
     return nombre, args
+
+
+# Momentos que se buscan en la frase cuando el router no puso ninguno.
+# Cada par es (lo que se busca sin tildes, cómo se dice bien): la
+# respuesta empieza con esto en voz alta, y "Fin de semana tienes..."
+# sonaba a telegrama. De más largo a más corto, porque "próximo fin de
+# semana" tiene que ganarle a "fin de semana" o filtraría por la
+# semana equivocada.
+FRASES_MOMENTO = [
+    ("proximo fin de semana",  "el próximo fin de semana"),
+    ("fin de semana que viene", "el fin de semana que viene"),
+    ("fin de semana siguiente", "el próximo fin de semana"),
+    ("proximo finde",          "el próximo fin de semana"),
+    ("finde que viene",        "el fin de semana que viene"),
+    ("fin de semana",          "el fin de semana"),
+    ("finde",                  "el fin de semana"),
+    ("pasado manana",          "pasado mañana"),
+    ("manana por la manana",   "mañana por la mañana"),
+    ("manana por la tarde",    "mañana por la tarde"),
+    ("manana por la noche",    "mañana por la noche"),
+    ("esta noche",             "esta noche"),
+    ("esta tarde",             "esta tarde"),
+    ("esta manana",            "esta mañana"),
+    ("manana",                 "mañana"),
+    ("hoy",                    "hoy"),
+]
+
+
+def destinatario_inventado(destinatario, pregunta):
+    """¿El router se ha sacado el destinatario de la manga?
+
+    El prompt del router lleva lo que Jarvis sabe del usuario, para que
+    los correos los firme con su nombre de verdad. Efecto secundario:
+    a "quiero mandar un correo electrónico", sin mencionar a nadie, le
+    puso destinatario "su novia" — sacado de un dato guardado.
+
+    La comprobación es tonta a propósito: si ninguna palabra del
+    destinatario aparece en lo que se dijo, no lo dijo.
+    """
+    propuesto = set(re.findall(r"[a-z0-9]{3,}", _sin_tildes(destinatario or "")))
+    if not propuesto:
+        return False
+    dicho = set(re.findall(r"[a-z0-9]{3,}", _sin_tildes(pregunta or "")))
+    return not (propuesto & dicho)
+
+
+def momento_en(pregunta):
+    """Devuelve el momento que aparezca en la frase, o cadena vacía.
+
+    Solo se usa cuando el router ya decidió que se consulta la agenda y
+    encima dejó el filtro vacío: no decide nada por su cuenta, solo
+    rellena un hueco que el modelo se dejó.
+    """
+    t = _sin_tildes(pregunta or "")
+    for buscar, decir in FRASES_MOMENTO:
+        if re.search(r"\b" + re.escape(buscar) + r"\b", t):
+            return decir
+    return ""
 
 
 def ejecutar(nombre, args):
@@ -946,9 +1475,27 @@ AQUI = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
 
 
+def version_interfaz():
+    """Huella de los ficheros que se envían al navegador.
+
+    Se calcula en cada conexión, no al arrancar: así vale también si se
+    toca el HTML con el servidor ya en marcha.
+    """
+    huella = hashlib.sha1()
+    for f in (AQUI / "index.html", AQUI / "static" / "nucleo.js"):
+        try:
+            huella.update(f.read_bytes())
+        except OSError:
+            pass
+    return huella.hexdigest()[:12]
+
+
 @app.get("/")
 async def raiz():
-    return FileResponse(AQUI / "index.html")
+    # Sin no-cache, tras editar el HTML el navegador seguía sirviendo el
+    # de su caché aunque se recargara, y parecía que el cambio no existía.
+    return FileResponse(AQUI / "index.html",
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.websocket("/ws")
@@ -958,6 +1505,12 @@ async def ws(sock: WebSocket):
     # Una memoria por conexión. Antes era global, así que dos pestañas
     # abiertas compartían conversación y se pisaban los turnos.
     historial = [{"role": "system", "content": PROMPT_SISTEMA}]
+    # Lo irreversible no se hace a la primera: se pregunta y se espera un
+    # "sí". Aquí se recuerda qué quedó pendiente. Va por conexión, como el
+    # historial: cada pestaña lleva su propia pregunta en el aire.
+    #   tipo "sistema" -> apagar o reiniciar
+    #   tipo "correo"  -> un email escrito y sin enviar
+    pendiente = {"tipo": None, "datos": None}
     comandos = asyncio.Queue()
     tarea_receptor = None
     grabando = False
@@ -971,6 +1524,160 @@ async def ws(sock: WebSocket):
             await sock.send_text(json.dumps(datos))
         except Exception:
             pass
+
+    async def decir_suelto(frase, etiqueta=None):
+        """Dice algo que no contesta a nada hablado: los botones del panel."""
+        await enviar(tipo="dicho", texto=frase, etiqueta=etiqueta)
+        await enviar(tipo="estado", valor="hablando")
+        await asyncio.to_thread(hablar, frase)
+        await enviar(tipo="estado", valor="inactivo")
+
+    async def decir_turno(frase, etiqueta=None, pregunta=None):
+        """Dice una frase corta y cierra el turno, sin pasar por el modelo.
+
+        Con `pregunta` cierra un turno de voz (y lo apunta en el historial).
+        Sin ella la frase va suelta: es lo que hace falta cuando quien ha
+        hablado es un botón del popup y no el micrófono.
+        """
+        if pregunta is None:
+            await decir_suelto(frase, etiqueta)
+            return
+        if etiqueta:
+            await enviar(tipo="herramienta", nombre=etiqueta)
+        await enviar(tipo="token", texto=frase)
+        await enviar(tipo="estado", valor="hablando")
+        await asyncio.to_thread(hablar, frase)
+        historial.append({"role": "user", "content": pregunta})
+        historial.append({"role": "assistant", "content": frase})
+        recortar_historial(historial)
+        await enviar(tipo="fin_respuesta")
+        await enviar(tipo="estado", valor="inactivo")
+
+    async def avanzar_correo(borrador, pregunta=None):
+        """Pide lo que le falte al correo, y abre el popup cuando esté.
+
+        El orden no es capricho. Primero A QUIÉN, y eso se teclea en el
+        popup: una dirección dictada que Whisper oye mal no se puede
+        arreglar repitiéndola, porque la vuelve a oír mal. El asunto y el
+        texto van por voz, que para eso sí acierta.
+
+        Lo que ya venga dicho no se vuelve a preguntar: "mándale un correo
+        a Ana diciéndole que llego tarde" no pasa por ningún paso.
+        """
+        agenda = [{"nombre": c["nombre"], "email": c["email"]}
+                  for c in correo.cargar_contactos()]
+
+        if not borrador.get("email"):
+            pendiente["tipo"] = "correo_paso"
+            pendiente["datos"] = dict(borrador, paso="destinatario")
+            await enviar(tipo="borrador", modo="destinatario", contactos=agenda,
+                         destinatario="", asunto=borrador.get("asunto", ""),
+                         mensaje=borrador.get("mensaje", ""))
+            await decir_turno("¿A quién se lo mando?", "correo", pregunta)
+            return
+
+        if not borrador.get("asunto"):
+            pendiente["tipo"] = "correo_paso"
+            pendiente["datos"] = dict(borrador, paso="asunto")
+            await decir_turno(f"Vale, para {borrador['nombre']}. "
+                              "¿De qué se trata?", "correo", pregunta)
+            return
+
+        if not borrador.get("mensaje"):
+            pendiente["tipo"] = "correo_paso"
+            pendiente["datos"] = dict(borrador, paso="mensaje")
+            await decir_turno("¿Y qué le digo?", "correo", pregunta)
+            return
+
+        # Ya está entero: se abre para revisarlo con el teclado antes de
+        # mandarlo. Un correo enviado a quien no era no se recupera.
+        pendiente["tipo"] = "correo"
+        pendiente["datos"] = dict(borrador)
+        await enviar(tipo="borrador", modo="completo", contactos=agenda,
+                     destinatario=borrador["nombre"], email=borrador["email"],
+                     asunto=borrador["asunto"], mensaje=borrador["mensaje"])
+        await decir_turno("Te lo he preparado. Míralo y dime si lo mando.",
+                          "borrador", pregunta)
+
+    def resolver_destino(escrito):
+        """Convierte lo tecleado en (dirección, nombre para decir).
+
+        El destinatario NO se coge tal cual de lo que manda el navegador:
+        o es alguien de la agenda, o es algo con forma de dirección.
+        Devuelve (None, None) si no es ni una cosa ni la otra.
+        """
+        escrito = (escrito or "").strip()
+        contacto = correo.buscar_contacto(escrito)
+        if contacto:
+            return contacto["email"], contacto["nombre"]
+        if correo.es_direccion(escrito):
+            return escrito, escrito
+        return None, None
+
+    async def resolver_borrador(mensaje):
+        """Botones del popup: elegir destinatario, enviar, o descartar.
+
+        Solo hace algo si ESTA conexión tiene un correo a medias, y eso
+        es lo que impide que alguien de la red se monte uno desde cero:
+        el servidor escucha en 0.0.0.0, pero `pendiente` va por conexión,
+        así que otra pestaña o otro equipo tiene el suyo vacío y estos
+        comandos le caen en saco roto.
+        """
+        if pendiente["tipo"] not in ("correo", "correo_paso"):
+            return
+        tipo, datos = pendiente["tipo"], pendiente["datos"]
+        pendiente["tipo"], pendiente["datos"] = None, None
+        cmd = mensaje.get("cmd")
+
+        def dejar_abierto():
+            """Devuelve el borrador a su sitio: lo escrito no se pierde."""
+            pendiente["tipo"], pendiente["datos"] = tipo, datos
+
+        if cmd == "borrador_cancelar":
+            print("[correo] descartado desde el popup")
+            await enviar(tipo="borrador_cerrar")
+            await decir_suelto("Vale, lo dejo.", "correo")
+            return
+
+        # Primer paso: solo el destinatario. Se cierra el popup y se sigue
+        # preguntando por voz, que es lo cómodo para el asunto y el texto.
+        if cmd == "borrador_destinatario":
+            destino, visible = resolver_destino(mensaje.get("destinatario"))
+            if not destino:
+                dejar_abierto()
+                await enviar(tipo="borrador_error",
+                             texto="Elige a alguien de la agenda, o escribe "
+                                   "una dirección entera.")
+                return
+            datos.pop("paso", None)
+            datos["email"], datos["nombre"] = destino, visible
+            await enviar(tipo="borrador_cerrar")
+            await avanzar_correo(datos)
+            return
+
+        # Último paso: mandar lo que hay escrito en el popup
+        asunto = (mensaje.get("asunto") or "").strip() or datos.get("asunto") or "Sin asunto"
+        cuerpo = (mensaje.get("mensaje") or "").strip()
+        if not cuerpo:
+            dejar_abierto()
+            await enviar(tipo="borrador_error", texto="El correo está vacío.")
+            return
+
+        destino, visible = resolver_destino(mensaje.get("destinatario"))
+        if not destino:
+            dejar_abierto()
+            await enviar(tipo="borrador_error",
+                         texto="Elige a quién va, o escribe una dirección entera.")
+            return
+
+        print(f"[correo] enviado desde el popup -> {destino}")
+        ok, frase = await asyncio.to_thread(correo.enviar, destino, asunto, cuerpo)
+        if not ok:
+            dejar_abierto()
+            await enviar(tipo="borrador_error", texto=frase)
+            return
+        await enviar(tipo="borrador_cerrar")
+        await decir_suelto(frase, f"correo a {visible}")
 
     async def medidor():
         """Manda nivel y espectro para que el anillo reaccione al micro."""
@@ -1019,6 +1726,91 @@ async def ws(sock: WebSocket):
         """
         await enviar(tipo="estado", valor="pensando")
 
+        async def decir_y_cerrar(frase, etiqueta=None):
+            """Dice una frase corta y cierra el turno. Sin pasar por el modelo."""
+            await decir_turno(frase, etiqueta, pregunta)
+
+        # ¿Se le acababa de preguntar si apagar o reiniciar? Entonces este
+        # turno es la respuesta, y se resuelve aquí SIN pasar por el router:
+        # el modelo enrutaría un "sí" suelto como charla y se perdería.
+        if pendiente["tipo"]:
+            tipo, datos = pendiente["tipo"], pendiente["datos"]
+            pendiente["tipo"], pendiente["datos"] = None, None
+            dijo_si = es_afirmacion(pregunta)
+
+            if tipo == "sistema":
+                if dijo_si:
+                    print(f"[sistema] confirmado: {datos}")
+                    resultado = await asyncio.to_thread(
+                        sistema.ejecutar_accion, datos)
+                    await decir_y_cerrar(resultado, "control sistema")
+                else:
+                    print(f"[sistema] NO confirmado: {datos} descartado")
+                    verbo = "reinicio" if datos == "reiniciar" else "apago"
+                    await decir_y_cerrar(f"Vale, no {verbo} nada.")
+                return
+
+            # Se le acaba de preguntar el asunto, el texto o a quién: lo
+            # que ha dicho ES la respuesta, no una orden nueva. No pasa
+            # por el router, que enrutaría "que llego tarde a la cena"
+            # como una tarea que apuntar.
+            if tipo == "correo_paso":
+                if pide_dejarlo(pregunta):
+                    print("[correo] abandonado a medias")
+                    await enviar(tipo="borrador_cerrar")
+                    await decir_y_cerrar("Vale, lo dejo.", "correo")
+                    return
+                paso = datos.pop("paso", "")
+                dicho = pregunta.strip()
+                if paso == "asunto":
+                    # El asunto es una línea: sin punto final y sin más
+                    datos["asunto"] = dicho.rstrip(" .").strip()
+                elif paso == "mensaje":
+                    # Lo dicho es un ENCARGO, no el texto: "mándale algo
+                    # formal pidiéndole que venga a casa". Lo redacta el
+                    # modelo, y luego se revisa en el popup.
+                    await enviar(tipo="estado", valor="pensando")
+                    t0 = time.monotonic()
+                    datos["mensaje"] = await asyncio.to_thread(
+                        redactar_correo, dicho, datos.get("nombre", ""),
+                        datos.get("asunto", ""))
+                    print(f"[correo] redactado en {time.monotonic()-t0:.1f}s")
+                elif paso == "destinatario":
+                    # Contestó hablando en vez de por el popup
+                    destino, visible = resolver_destino(dicho)
+                    if not destino:
+                        pendiente["tipo"] = "correo_paso"
+                        pendiente["datos"] = dict(datos, paso="destinatario")
+                        await decir_y_cerrar(
+                            "No tengo a esa persona en la agenda. "
+                            "Escríbelo en el recuadro.", "correo")
+                        return
+                    datos["email"], datos["nombre"] = destino, visible
+                await avanzar_correo(datos, pregunta)
+                return
+
+            if tipo == "correo":
+                if not dijo_si:
+                    print("[correo] NO confirmado: no se envia")
+                    await enviar(tipo="borrador_cerrar")
+                    await decir_y_cerrar("Vale, no lo mando.")
+                    return
+                # Decir "sí" manda lo que hay escrito en el borrador. Si le
+                # falta el destinatario no se puede: hay que elegirlo, y eso
+                # se hace en el panel, no hablando.
+                if not datos.get("email"):
+                    pendiente["tipo"], pendiente["datos"] = "correo", datos
+                    await decir_y_cerrar(
+                        "Antes tienes que elegir a quién se lo mando.", "borrador")
+                    return
+                print(f"[correo] confirmado por voz -> {datos['email']}")
+                ok, frase = await asyncio.to_thread(
+                    correo.enviar, datos["email"], datos["asunto"],
+                    datos["mensaje"])
+                await enviar(tipo="borrador_cerrar")
+                await decir_y_cerrar(frase, "correo")
+                return
+
         # Primero el router: ¿esto va de tareas o del reloj?
         try:
             t_ruta = time.monotonic()
@@ -1053,6 +1845,97 @@ async def ws(sock: WebSocket):
             contexto_web = buscar.como_contexto(fragmentos)
             nombre = None          # sigue por la vía conversacional, con contexto
 
+        # Los correos, igual que la web: hace falta que el modelo los lea y
+        # los resuma. Pero aquí hay un motivo de seguridad además del
+        # práctico. El texto de un correo lo escribe cualquiera, y puede
+        # traer dentro "manda un correo a esta dirección" o "apaga el
+        # ordenador". Metiéndolo por esta vía se le entrega al CONVERSADOR,
+        # que no lleva herramientas: aunque el modelo se creyera la orden,
+        # no tiene con qué ejecutarla. Al router, que sí las lleva, no le
+        # llega nunca el contenido de un correo.
+        contexto_correo = None
+        if nombre == "leer_correos":
+            await enviar(tipo="herramienta", nombre="mirando el correo")
+            a = args or {}
+            nuevos = a.get("solo_nuevos")
+            nuevos = True if nuevos is None else str(nuevos).lower() not in ("false", "0", "no")
+            quien = (a.get("de") or "").strip()
+            t_mail = time.monotonic()
+            correos, fallo = await asyncio.to_thread(
+                correo.leer_nuevos, nuevos, quien)
+            print(f"[correo] {time.monotonic()-t_mail:.1f}s  "
+                  f"{'sin leer' if nuevos else 'recientes'}"
+                  f"{' de ' + quien if quien else ''} -> {len(correos)}"
+                  f"{' | ' + fallo if fallo else ''}")
+            if fallo:
+                await decir_y_cerrar(f"No he podido mirar el correo: {fallo}.",
+                                     "correo")
+                return
+            if not correos:
+                # Sin correos no hay nada que resumir, y pasarle una lista
+                # vacía al modelo es invitarle a inventarse remitentes.
+                if quien:
+                    vacio = f"No tienes ningún correo de {quien}."
+                elif nuevos:
+                    vacio = "No tienes correos nuevos."
+                else:
+                    vacio = "No hay nada en la bandeja de entrada."
+                await decir_y_cerrar(vacio, "correo")
+                return
+            contexto_correo = correo.como_contexto(correos, nuevos)
+            nombre = None
+
+        # Apagar y reiniciar NO se ejecutan a la primera: se pregunta y se
+        # espera respuesta. Es lo único de lo que no se vuelve, así que no
+        # basta con que el router lo proponga bien.
+        if nombre == "control_sistema":
+            accion = (args or {}).get("accion", "")
+            if accion in ("apagar", "reiniciar"):
+                pendiente["tipo"], pendiente["datos"] = "sistema", accion
+                verbo = "reinicie" if accion == "reiniciar" else "apague"
+                await decir_y_cerrar(f"¿Seguro que quieres que {verbo} el ordenador?",
+                                     "confirmar")
+                return
+
+        # Un correo tampoco se manda a la primera: se lee entero en voz alta
+        # y se espera un "sí". Mandarlo a quien no era no tiene arreglo.
+        if nombre == "enviar_correo":
+            a = args or {}
+            if not correo.cargar_contactos():
+                await decir_y_cerrar(
+                    "No tengo la agenda de contactos preparada todavía.",
+                    "correo")
+                return
+
+            pedido = (a.get("destinatario") or "").strip()
+            # Un destinatario que no salió de la boca del usuario no vale:
+            # a "quiero mandar un correo" el router propuso "su novia",
+            # sacado de los datos guardados. Se ignora y se pregunta.
+            if pedido and destinatario_inventado(pedido, pregunta):
+                print(f"[correo] descarto destinatario {pedido!r}: no lo dijo")
+                pedido = ""
+            contacto = correo.buscar_contacto(pedido) if pedido else None
+
+            mensaje = (a.get("mensaje") or "").strip()
+            # Aunque se le diga que no, a veces deja "[nombre del usuario]".
+            # Enviarlo con el hueco puesto quedaría fatal, así que se quita.
+            mensaje = re.sub(r"\[[^\]]{2,40}\]", "", mensaje)
+            mensaje = re.sub(r"\s+([,.])", r"\1", mensaje).strip(" ,\n")
+            # El modelo a veces describe el encargo en vez de redactarlo:
+            # "El usuario pide que mandes un correo electrónico". Eso no es
+            # un correo, así que se tira y se pregunta qué decir.
+            if re.match(r"(?i)\s*(el|la)\s+usuari[oa]\b", mensaje):
+                print(f"[correo] descarto mensaje {mensaje[:40]!r}: es una descripción")
+                mensaje = ""
+
+            await avanzar_correo({
+                "email": contacto["email"] if contacto else "",
+                "nombre": contacto["nombre"] if contacto else "",
+                "asunto": (a.get("asunto") or "").strip(),
+                "mensaje": mensaje,
+            }, pregunta)
+            return
+
         if nombre:
             resultado = await asyncio.to_thread(ejecutar, nombre, args)
             if resultado:
@@ -1075,12 +1958,14 @@ async def ws(sock: WebSocket):
         # abierto y haber cruzado la medianoche.
         historial[0] = {"role": "system", "content": prompt_con_fecha()}
 
-        if contexto_web:
-            # Los resultados van en el turno del usuario, no en el prompt de
-            # sistema: así se van solos cuando el historial se recorta y no
-            # contaminan las preguntas siguientes.
+        material = contexto_web or contexto_correo
+        if material:
+            # El material va en el turno del usuario, no en el prompt de
+            # sistema: así se va solo cuando el historial se recorta y no
+            # contamina las preguntas siguientes. Que un correo leído hace
+            # diez turnos siga influyendo sería un problema, no una ventaja.
             historial.append({"role": "user",
-                              "content": f"{contexto_web}\n\nPREGUNTA: {pregunta}"})
+                              "content": f"{material}\n\nPREGUNTA: {pregunta}"})
         else:
             historial.append({"role": "user", "content": pregunta})
         completa = ""
@@ -1235,6 +2120,14 @@ async def ws(sock: WebSocket):
                 return
 
     try:
+        # La huella de la interfaz va lo primero. Al reiniciar el servidor,
+        # la página NO se recarga: el WebSocket se cae, reconecta solo, y la
+        # pestaña sigue con el JavaScript de antes. Todo parece funcionar
+        # —el servidor manda bien sus mensajes— pero los nuevos los ignora
+        # sin dar ningún error. Pasó con el popup del correo: el servidor
+        # decía "¿a quién se lo mando?" y el popup no salía por ningún lado.
+        await enviar(tipo="version", valor=version_interfaz())
+
         await enviar(tipo="estado", valor="inactivo")
 
         # Nada más entrar, cuenta lo que hay para hoy. Es la diferencia entre
@@ -1267,6 +2160,9 @@ async def ws(sock: WebSocket):
             mensaje = await comandos.get()
             if mensaje is FIN:
                 break
+            if mensaje.get("cmd") in CMDS_BORRADOR:
+                await resolver_borrador(mensaje)
+                continue
             if mensaje.get("cmd") != "alternar":
                 continue
 
@@ -1292,6 +2188,16 @@ async def ws(sock: WebSocket):
                 return_when=asyncio.FIRST_COMPLETED)
 
             if tarea_cmd in hechas:
+                llegado = tarea_cmd.result()
+                # Los botones del borrador no son una interrupción: si se
+                # pulsan mientras aún está diciendo "te lo he preparado",
+                # se le deja acabar y se atienden después. Tratarlos como
+                # una pulsación de micro habría descartado el correo.
+                if (llegado is not FIN and isinstance(llegado, dict)
+                        and llegado.get("cmd") in CMDS_BORRADOR):
+                    await tarea_turno
+                    await resolver_borrador(llegado)
+                    continue
                 # Pulsó mientras pensaba o hablaba: se le calla en el acto
                 cortar_voz()
                 tarea_turno.cancel()

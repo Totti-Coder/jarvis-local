@@ -18,6 +18,7 @@ PUESTA EN MARCHA
 Ni .env ni token.json deben subirse a git: están en .gitignore.
 """
 
+import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -113,35 +114,58 @@ def conectar(interactivo=False):
         _fallo = "faltan las librerías (pip install google-api-python-client google-auth-oauthlib)"
         return None
 
+    # El token es compartido con el correo, así que aquí NO se puede pedir
+    # solo PERMISOS: from_authorized_user_file no comprueba nada, sobrescribe
+    # cred.scopes con lo que le pases, y al guardar se perdería el permiso de
+    # Gmail. Pasaba de verdad: cada arranque de Jarvis dejaba el fichero con
+    # el calendario solo y el correo decía "no tienes permiso" para siempre.
+    # Se carga con lo que el fichero YA tiene, y se comprueba aparte que el
+    # del calendario esté entre ellos.
     cred = None
+    concedidos = []
     if TOKEN.exists():
         try:
-            cred = Credentials.from_authorized_user_file(str(TOKEN), PERMISOS)
+            guardado = json.loads(TOKEN.read_text(encoding="utf-8"))
         except Exception:
+            guardado = {}
+        concedidos = list(guardado.get("scopes") or [])
+        if set(PERMISOS).issubset(set(concedidos)):
+            try:
+                cred = Credentials.from_authorized_user_info(guardado, concedidos)
+            except Exception:
+                cred = None
+
+    renovado = False
+    if cred and not cred.valid and cred.expired and cred.refresh_token:
+        try:
+            cred.refresh(Request())
+            renovado = True
+        except Exception as e:
+            print(f"[calendario] no se pudo renovar: {e}")
             cred = None
 
     if not cred or not cred.valid:
-        if cred and cred.expired and cred.refresh_token:
-            try:
-                cred.refresh(Request())
-            except Exception as e:
-                _fallo = f"no se pudo renovar el permiso ({e})"
-                cred = None
-        elif interactivo:
-            flujo = InstalledAppFlow.from_client_config(config, PERMISOS)
-            cred = flujo.run_local_server(port=0)
-        else:
+        if not interactivo:
             _fallo = "sin permiso todavía: ejecuta python calendario.py una vez"
             return None
+        # Al reautorizar se piden también los permisos que ya hubiera, para
+        # no quitarle al correo el suyo por el camino.
+        flujo = InstalledAppFlow.from_client_config(
+            config, sorted(set(concedidos) | set(PERMISOS)))
+        cred = flujo.run_local_server(port=0)
+        renovado = True
 
     if not cred:
         return None
 
-    TOKEN.write_text(cred.to_json(), encoding="utf-8")
-    try:
-        os.chmod(TOKEN, 0o600)       # el token es una credencial: que no lo lea todo el mundo
-    except Exception:
-        pass
+    # Solo se escribe si algo ha cambiado. Reescribirlo en cada arranque no
+    # aportaba nada y era justo lo que borraba el permiso de Gmail.
+    if renovado:
+        TOKEN.write_text(cred.to_json(), encoding="utf-8")
+        try:
+            os.chmod(TOKEN, 0o600)   # el token es una credencial: que no lo lea cualquiera
+        except Exception:
+            pass
 
     try:
         _servicio = build("calendar", "v3", credentials=cred,

@@ -4,7 +4,6 @@ Uso:  python comprobar_google.py
 """
 
 import sys
-from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 import calendario

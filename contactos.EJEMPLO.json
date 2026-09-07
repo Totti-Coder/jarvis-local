@@ -1,0 +1,25 @@
+{
+  "_ayuda": [
+    "Tu agenda de correo. Copia este fichero como contactos.json.",
+    "",
+    "  nombre   como lo dices en voz alta",
+    "  email    la direccion, tecleada por ti",
+    "  alias    otras formas de llamarle (opcional)",
+    "",
+    "POR QUE ASI",
+    "  Dictar una direccion de correo por voz es garantia de error, y un",
+    "  correo mandado a quien no era no se puede recuperar. Escribiendola",
+    "  aqui una vez, con calma, la voz solo tiene que acertar el NOMBRE.",
+    "",
+    "  contactos.json esta en .gitignore: son datos personales de otros."
+  ],
+
+  "contactos": [
+    {"nombre": "Ana",   "email": "ana@ejemplo.com",
+     "alias": ["ani", "mi hermana"]},
+    {"nombre": "Luis",  "email": "luis@ejemplo.com",
+     "alias": ["mi jefe"]},
+    {"nombre": "yo",    "email": "tu-propio-correo@gmail.com",
+     "alias": ["mi correo", "a mi mismo"]}
+  ]
+}

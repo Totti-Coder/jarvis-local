@@ -17,6 +17,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-TTS-7C3AED">
   <img alt="Tests" src="https://img.shields.io/badge/tests-99%20casos-2ea44f">
+  <img alt="Router" src="https://img.shields.io/badge/router-56%20frases%20%C2%B7%20100%25-2ea44f">
 </p>
 
 ---
@@ -32,6 +33,8 @@
 - [Conceptos clave](#conceptos-clave)
 - [Decisiones de arquitectura](#decisiones-de-arquitectura)
 - [Instalación](#instalación)
+  - [Qué hace falta registrarse](#qué-hace-falta-registrarse-resumen)
+  - [Google Calendar](#5-google-calendar-opcional)
 - [Uso](#uso)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Tests](#tests)
@@ -47,8 +50,11 @@ tecla, hablas, y te responde en voz alta. Además lleva tu agenda: le dices
 "recuérdame comprar pan mañana a las ocho" y lo apunta; al día siguiente, nada
 más abrirlo, te lo cuenta él solo.
 
-No hay claves de API, ni cuentas, ni cuotas. Los modelos que usa —transcripción,
-lenguaje y voz— se descargan una vez y se ejecutan en local.
+Los modelos que usa —transcripción, lenguaje y voz— se descargan una vez y
+se ejecutan en tu equipo. Sin claves de API, sin cuentas y sin cuotas.
+
+La única pieza que pide credenciales es la sincronización con Google
+Calendar, y es **opcional**: sin ella todo lo demás funciona igual.
 
 **Por qué existe:** quería un asistente que funcionara sin depender de la nube,
 y aprender por el camino cómo se ensambla de verdad una tubería de voz: dónde
@@ -102,7 +108,9 @@ Jarvis ▸ "Fue Velázquez. Es su obra más famosa."
 | **Síntesis de voz** | [Piper](https://github.com/OHF-Voice/piper1-gpl) 1.7 | `es_ES-sharvard-medium` | Voz neuronal, x19 tiempo real |
 | **Servidor** | FastAPI + WebSocket | — | Comunicación bidireccional con la interfaz |
 | **Memoria** | SQLite | — | Lo que debe ser exacto no lo guarda un modelo |
-| **Interfaz** | HTML + SVG + JS sin dependencias | — | Un solo fichero, sin nada que compilar |
+| **Búsqueda** | DuckDuckGo vía [`ddgs`](https://pypi.org/project/ddgs/) | — | Sin clave de API |
+| **Calendario** | Google Calendar API (opcional) | — | Espejo de las tareas; SQLite sigue mandando |
+| **Interfaz** | HTML + [Three.js](https://threejs.org) servido en local | — | Sin CDN: funciona sin conexión |
 
 **Requisitos:** Python 3.13, GPU NVIDIA con 8 GB de VRAM (probado en RTX 3060 Ti),
 16 GB de RAM. Funciona en CPU, pero mucho más lento.
@@ -125,18 +133,25 @@ flowchart TB
         STT["Whisper<br/>tiny · small"]
         ROUTER{"Router<br/>llama3.1"}
         CHARLA["Conversador<br/>llama3.1"]
-        HERR["Herramientas"]
+        HERR["Herramientas<br/>agenda · reloj · memoria"]
+        WEB["Búsqueda web"]
         TTS["Piper"]
     end
 
     DB[("SQLite<br/>asistente.db")]
+    GC[("Google<br/>Calendar")]
+    NET(["Internet"])
 
     UI -- "espacio" --> MIC
     MIC --> STT
     STT --> ROUTER
-    ROUTER -- "¿agenda o reloj?" --> HERR
+    ROUTER -- "agenda, reloj<br/>o memoria" --> HERR
+    ROUTER -- "algo actual" --> WEB
     ROUTER -- "es charla" --> CHARLA
     HERR <--> DB
+    DB -. "espejo" .-> GC
+    WEB <--> NET
+    WEB -- "lo leído" --> CHARLA
     HERR --> TTS
     CHARLA -- "streaming por frases" --> TTS
     TTS --> UI
@@ -376,6 +391,19 @@ tener algo propio. Se descartó a conciencia.
 
 ## Instalación
 
+### Qué hace falta registrarse (resumen)
+
+| Pieza | ¿Pide cuenta o clave? | Coste |
+|---|---|---|
+| Whisper (transcripción) | No | Gratis, se descarga solo |
+| Ollama + llama3.1 | No | Gratis, se descarga solo |
+| Piper (voz) | No | Gratis, se descarga solo |
+| Búsqueda web (DuckDuckGo) | **No, sin clave de API** | Gratis |
+| **Google Calendar** | **Sí, credenciales OAuth** | Gratis, pero hay que configurarlo |
+
+Solo el calendario pide credenciales, y es **opcional**: sáltatelo y todo lo
+demás sigue funcionando.
+
 ### 1. Requisitos previos
 
 - **Python 3.13** ([descarga](https://www.python.org/downloads/))
@@ -402,6 +430,116 @@ python -m piper.download_voices es_ES-sharvard-medium --data-dir voces
 
 Los modelos de Whisper se descargan solos la primera vez que arranca.
 
+### 5. Google Calendar (opcional)
+
+Este es **el único paso que pide credenciales**. Todo lo demás funciona sin
+registrarse en ningún sitio. Si te lo saltas, Jarvis va igual: las tareas se
+guardan en SQLite y simplemente no aparecen en tu calendario.
+
+#### Qué necesitas conseguir
+
+Dos valores, y ambos son **gratis**:
+
+| Variable | Qué es | Pinta que tiene |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | Identifica tu aplicación ante Google | `4214...-fhf0....apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | La contraseña de esa aplicación | `GOCSPX-...` (unos 35 caracteres) |
+
+> [!CAUTION]
+> **Una "clave de API" de Google NO sirve.** Las claves API solo acceden a
+> datos públicos, y tu calendario es privado. Lo que hace falta es un
+> **ID de cliente OAuth 2.0**, que es otra cosa distinta dentro de la misma
+> consola. Es el error más fácil de cometer.
+
+#### Paso a paso en la consola de Google
+
+Todo ocurre en [console.cloud.google.com](https://console.cloud.google.com):
+
+**1. Crea un proyecto** (o usa uno que ya tengas). El nombre da igual.
+
+**2. Habilita la API.**
+`APIs y servicios → Biblioteca` → busca *Google Calendar API* → **Habilitar**.
+
+**3. Configura la pantalla de consentimiento.**
+`Google Auth Platform → Público` (en consolas antiguas:
+`Pantalla de consentimiento de OAuth`):
+
+- Tipo de usuario: **Externo**
+- Estado de publicación: **Prueba** (*Testing*)
+- En **Usuarios de prueba** → **+ Añadir usuarios** → **pon tu propio Gmail**
+
+> [!WARNING]
+> Ese último punto no es opcional. Si tu correo no está en la lista de
+> usuarios de prueba, Google te bloqueará con
+> `Error 403: access_denied` — aunque sea tu propia aplicación y tu propia
+> cuenta.
+
+**4. Crea las credenciales.**
+`Credenciales → Crear credenciales → ID de cliente de OAuth`:
+
+- Tipo de aplicación: **Aplicación de escritorio**
+  (no *Aplicación web*: los redirect URI no coincidirían)
+- Al crearla, Google te enseña el **ID de cliente** y el **secreto de cliente**
+
+#### Ponlos en el `.env`
+
+```bash
+copy .env.example .env
+```
+
+Abre `.env` y pega los dos valores:
+
+```bash
+GOOGLE_CLIENT_ID=4214....apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-....
+GOOGLE_PROJECT_ID=el-nombre-de-tu-proyecto
+```
+
+#### Comprueba y autoriza
+
+```bash
+python comprobar_google.py
+```
+
+Valida el fichero **sin mostrar tus secretos**: solo confirma que están
+presentes y con el formato correcto, y detecta el error de haber creado la
+credencial como aplicación web.
+
+```bash
+python calendario.py
+```
+
+Abre tu navegador para que **tú** des permiso a tu propia cuenta. Verás un
+aviso de *"Google no ha verificado esta aplicación"*: es normal para una app
+en modo prueba. **Configuración avanzada → Ir a (no seguro)**.
+
+Al terminar crea un evento de prueba mañana a las 10 para que compruebes que
+llega, y te pregunta si lo borra.
+
+#### Qué se guarda dónde
+
+| Fichero | Contiene | ¿Se sube a git? |
+|---|---|---|
+| `.env` | Tu client_id y client_secret | ❌ Nunca |
+| `token.json` | El permiso concedido, se crea solo | ❌ Nunca |
+| `.env.example` | La plantilla con huecos | ✅ Sí |
+
+> [!WARNING]
+> `.env` y `token.json` dan acceso a tu calendario. Están en `.gitignore`,
+> pero si alguna vez los subes por error, **borrarlos después no basta**:
+> quedan en el historial de git. En ese caso hay que **revocar el secreto**
+> en la consola de Google y generar otro.
+
+#### Si algo falla
+
+| Error | Causa | Solución |
+|---|---|---|
+| `403: access_denied` | Tu correo no está en usuarios de prueba | Añádelo en `Público → Usuarios de prueba` |
+| `no parece OAuth` | Creaste una clave de API, no un ID de cliente | Crea un *ID de cliente OAuth* de escritorio |
+| `redirect_uri_mismatch` | Elegiste *Aplicación web* | Crea otra de tipo *Aplicación de escritorio* |
+| `calendario: desactivado` | Falta el `.env` o está sin rellenar | `python comprobar_google.py` te dice qué falta |
+| `sin permiso todavía` | El `.env` está bien pero falta autorizar | `python calendario.py` |
+
 > [!IMPORTANT]
 > En Windows, `faster-whisper` necesita las librerías CUDA de NVIDIA
 > (`nvidia-cublas-cu12` y `nvidia-cudnn-cu12`, ya incluidas en
@@ -409,7 +547,7 @@ Los modelos de Whisper se descargan solos la primera vez que arranca.
 > arrancar. Sin ese paso el modelo **se carga bien en CUDA y luego revienta al
 > transcribir** con `Library cublas64_12.dll is not found or cannot be loaded`.
 
-### 5. Arrancar
+### 6. Arrancar
 
 ```bash
 python servidor.py
@@ -476,21 +614,30 @@ MAX_GRABACION_S  = 30                       # corte automático
 ## Estructura del proyecto
 
 ```
-├── servidor.py          # FastAPI, WebSocket, router, herramientas, voz
-├── memoria.py           # SQLite + intérprete de fechas en español
-├── index.html           # Interfaz completa, sin dependencias
-├── ver_tareas.py        # Utilidad de línea de comandos para la agenda
+├── servidor.py            # FastAPI, WebSocket, router, herramientas, voz
+├── memoria.py             # SQLite + intérprete de fechas en español
+├── buscar.py              # Búsqueda web y lectura de páginas
+├── calendario.py          # Espejo en Google Calendar (opcional)
+├── index.html             # Interfaz
+├── static/nucleo.js       # Núcleo 3D con Three.js
+├── ver_tareas.py          # Utilidad de consola para la agenda
+├── comprobar_google.py    # Valida el .env sin mostrar los secretos
 ├── requirements.txt
+├── .env.example           # Plantilla de credenciales, sin secretos
 │
-├── test_memoria.py      # Fechas, horas habladas          (37 casos)
-├── test_horas.py        # Ambigüedad de "a las 8.40"      (20 casos)
-├── test_ventanas.py     # Franjas y tramos horarios       (25 casos)
-├── test_resumen.py      # Persistencia entre días          (4 casos)
-├── test_frases.py       # Troceado para la voz             (6 casos)
-├── test_voz.py          # Piper: suena, corta, pronuncia   (7 casos)
+├── eval_router.py         # Acierto del router              (56 frases)
+├── test_memoria.py        # Fechas y horas habladas         (37 casos)
+├── test_ventanas.py       # Franjas y tramos horarios       (25 casos)
+├── test_horas.py          # Ambigüedad de "a las 8.40"      (20 casos)
+├── test_voz.py            # Piper: suena, corta, pronuncia   (7 casos)
+├── test_frases.py         # Troceado para la voz             (6 casos)
+├── test_resumen.py        # Persistencia entre días          (4 casos)
+├── test_cadena.py         # Las cuatro etapas de una vez
 │
-├── voces/               # Modelos de Piper (.onnx)
-└── asistente.db         # SQLite, se crea al arrancar
+├── voces/                 # Modelos de Piper (se descargan)
+├── .env                   # TUS SECRETOS: nunca se sube
+├── token.json             # Acceso a tu calendario: nunca se sube
+└── asistente.db           # Tus tareas: nunca se sube
 ```
 
 ---

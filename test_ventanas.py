@@ -119,5 +119,34 @@ for texto, ei, ef in RANGOS:
     print(f"  {'OK ' if ok else 'MAL'} {texto:<36} {ri} -> {rf}"
           + ("" if ok else f"   (esperaba {ei} -> {ef})"))
 
+print("\n" + "=" * 68)
+print('EL FIN DE SEMANA: viernes, sabado y domingo (no solo el sabado)')
+print("=" * 68)
+# Preguntando "que tengo el fin de semana" no habia ventana ninguna, asi
+# que se listaba TODO lo pendiente: salia el examen del martes y hasta
+# una tarea basura de hacia cuatro dias.
+# Se cuenta el viernes entero porque el finde empieza al salir el viernes.
+FINDES = [
+    # (dia desde el que se pregunta, frase, desde, hasta)
+    ("2026-09-07", "el fin de semana",         "11/09 00:00", "13/09 23:59"),  # lunes
+    ("2026-09-10", "el fin de semana",         "11/09 00:00", "13/09 23:59"),  # jueves
+    # ya dentro del finde: es ESTE, no el de dentro de siete dias
+    ("2026-09-11", "este fin de semana",       "11/09 00:00", "13/09 23:59"),  # viernes
+    ("2026-09-12", "el finde",                 "11/09 00:00", "13/09 23:59"),  # sabado
+    ("2026-09-13", "el fin de semana",         "11/09 00:00", "13/09 23:59"),  # domingo
+    # el siguiente, dicho de varias maneras
+    ("2026-09-07", "el proximo fin de semana", "18/09 00:00", "20/09 23:59"),
+    ("2026-09-07", "el finde que viene",       "18/09 00:00", "20/09 23:59"),
+]
+for dia, texto, ei, ef in FINDES:
+    hoy = datetime.fromisoformat(dia + "T12:00:00")
+    d, h = memoria.interpretar_ventana(texto, hoy)
+    ri = f"{d:%d/%m %H:%M}" if d else "NO"
+    rf = f"{h:%d/%m %H:%M}" if h else "NO"
+    ok = ri == ei and rf == ef
+    fallos += not ok
+    print(f"  {'OK ' if ok else 'MAL'} {dia} {texto:<26} {ri} -> {rf}"
+          + ("" if ok else f"   (esperaba {ei} -> {ef})"))
+
 print(f"\n{'TODO OK' if not fallos else f'{fallos} FALLOS'}")
 sys.exit(1 if fallos else 0)

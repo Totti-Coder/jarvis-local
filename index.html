@@ -111,6 +111,73 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
   content:'▌';margin-left:2px;animation:parpadeo 1s steps(2) infinite}
 @keyframes parpadeo{50%{opacity:0}}
 
+/* ---------- borrador de correo ----------
+   Un correo dictado entero no se puede corregir hablando: si Whisper
+   oye mal la direccion, repetirla en voz alta falla otra vez. Por eso
+   antes de enviar nada se abre esto y se revisa con el teclado. */
+.velo{
+  position:fixed;inset:0;z-index:50;
+  background:rgba(2,5,9,.82);backdrop-filter:blur(3px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  animation:aparecer .2s ease both;
+}
+@keyframes aparecer{from{opacity:0}}
+.velo[hidden]{display:none}
+
+.sobre{
+  width:min(560px,100%);max-height:92vh;overflow-y:auto;
+  background:#070d14;
+  border:1px solid var(--cian-tenue);border-radius:4px;
+  box-shadow:0 0 46px rgba(86,217,232,.13);
+  padding:22px 24px 20px;
+  display:flex;flex-direction:column;gap:14px;
+}
+.sobre h2{
+  font-family:'Barlow Condensed',sans-serif;font-weight:500;
+  font-size:13px;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--ambar);
+}
+.campo{display:flex;flex-direction:column;gap:5px}
+/* display:flex gana a [hidden], que solo vale display:none. Sin esto,
+   ocultar el asunto y el mensaje en el primer paso no hacia nada. */
+.campo[hidden]{display:none}
+.campo label{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:10px;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--cian-tenue);
+}
+.sobre input,.sobre textarea{
+  font-family:'IBM Plex Mono',monospace;font-size:14px;
+  background:#04080d;color:#d4eef4;
+  border:1px solid rgba(86,217,232,.22);border-radius:3px;
+  padding:9px 11px;width:100%;line-height:1.6;
+}
+.sobre input:focus,.sobre textarea:focus{
+  outline:none;border-color:var(--acento);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--acento) 12%,transparent);
+}
+.sobre textarea{resize:vertical;min-height:150px}
+.aviso{color:#e06868;font-size:12px;line-height:1.5}
+.aviso[hidden]{display:none}
+
+.botones{display:flex;gap:10px;justify-content:flex-end;margin-top:2px}
+.sobre button{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;letter-spacing:.2em;text-transform:uppercase;
+  padding:10px 20px;border-radius:3px;cursor:pointer;
+  border:1px solid var(--cian-tenue);background:transparent;color:var(--texto);
+  transition:border-color .2s,color .2s,background .2s;
+}
+.sobre button:hover{border-color:var(--acento);color:var(--acento)}
+.sobre button.mandar{
+  border-color:var(--ambar);color:var(--ambar);
+  background:color-mix(in srgb,var(--ambar) 9%,transparent);
+}
+.sobre button.mandar:hover{background:color-mix(in srgb,var(--ambar) 20%,transparent)}
+.sobre button[disabled]{opacity:.4;cursor:wait}
+.truco{font-size:10px;color:var(--cian-tenue);letter-spacing:.1em;
+  margin-right:auto;align-self:center}
+
 /* ---------- accesibilidad ---------- */
 :focus-visible{outline:2px solid var(--acento);outline-offset:4px}
 @media (prefers-reduced-motion:reduce){
@@ -119,6 +186,16 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 @media (max-width:600px){
   .telemetria{display:none}
   .registro{height:40vh;padding:16px}
+  /* En el móvil el popup ocupa la pantalla: con el teclado abierto no
+     queda sitio para adornos, y los botones tienen que ser tocables. */
+  .velo{padding:0;align-items:stretch}
+  .sobre{height:100dvh;max-height:none;border:none;border-radius:0;padding:18px 16px}
+  /* el mensaje se come el hueco que sobra en vez de dejar medio movil vacio */
+  .campo-mensaje{flex:1;min-height:0}
+  .sobre textarea{height:100%;min-height:90px}
+  .botones{margin-top:4px}
+  .sobre button{flex:1;padding:14px 12px}
+  .truco{display:none}
 }
 </style>
 </head>
@@ -143,6 +220,41 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 
 <section class="registro" id="registro" aria-live="polite"></section>
 
+<!-- Borrador de correo. Sale cuando Jarvis propone enviar uno: se revisa
+     con el teclado y se manda desde aqui, nunca solo de oido. -->
+<div class="velo" id="velo" hidden>
+  <form class="sobre" id="sobre" role="dialog" aria-modal="true"
+        aria-labelledby="sobre-titulo">
+    <h2 id="sobre-titulo">Revisa el correo antes de enviarlo</h2>
+
+    <div class="campo">
+      <label for="b-para">Para — un nombre de tu agenda o una direcci&oacute;n</label>
+      <input id="b-para" list="b-agenda" autocomplete="off"
+             autocapitalize="off" autocorrect="off" spellcheck="false"
+             inputmode="email" placeholder="Ana  ·  ana@ejemplo.com">
+      <datalist id="b-agenda"></datalist>
+    </div>
+
+    <div class="campo">
+      <label for="b-asunto">Asunto</label>
+      <input id="b-asunto" autocomplete="off">
+    </div>
+
+    <div class="campo campo-mensaje">
+      <label for="b-mensaje">Mensaje</label>
+      <textarea id="b-mensaje"></textarea>
+    </div>
+
+    <p class="aviso" id="b-aviso" hidden></p>
+
+    <div class="botones">
+      <span class="truco"><kbd>Esc</kbd> cancela</span>
+      <button type="button" id="b-cancelar">Cancelar</button>
+      <button type="submit" class="mandar" id="b-enviar">Enviar</button>
+    </div>
+  </form>
+</div>
+
 <script>
 // Estado que el motor 3D necesita leer. Va en window porque el motor
 // es un modulo ES y no comparte ambito con este script.
@@ -164,6 +276,7 @@ function nuevaLinea(clase, quien, texto) {
 
 let provisional = null;   // la línea que se va escribiendo mientras hablas
 let respuesta = null;     // la línea que crece token a token
+let version = null;       // huella de la interfaz con la que se cargó esto
 
 function fijarEstado(valor) {
   const mapa = {
@@ -220,6 +333,18 @@ const alMensaje = ev => {
     if (m.bandas) J.bandas = m.bandas;
   }
 
+  // Huella de la interfaz que sirve el servidor. Si cambia respecto a la
+  // que hay cargada, esta pagina es vieja: al reiniciar el servidor el
+  // socket reconecta solo, sin recargar, y la pestaña se queda con el JS
+  // de antes. Los mensajes nuevos se ignoraban sin ningun error visible.
+  else if (m.tipo === 'version') {
+    if (version === null) version = m.valor;
+    else if (version !== m.valor) {
+      document.getElementById('conexion').textContent = 'actualizando';
+      location.reload();
+    }
+  }
+
   else if (m.tipo === 'estado') fijarEstado(m.valor);
 
   else if (m.tipo === 'parcial') {
@@ -269,7 +394,102 @@ const alMensaje = ev => {
     respuesta = null;
     nuevaLinea('ia error', 'Jarvis', m.texto);
   }
+
+  // frase suelta de Jarvis que no contesta a nada dicho (botones del popup)
+  else if (m.tipo === 'dicho') {
+    const l = nuevaLinea('ia desde-herramienta', 'Jarvis', m.texto);
+    if (m.etiqueta)
+      l.querySelector('.quien').insertAdjacentHTML('beforeend',
+        `<i class="etiqueta">${m.etiqueta}</i>`);
+  }
+
+  else if (m.tipo === 'borrador')       abrirBorrador(m);
+  else if (m.tipo === 'borrador_cerrar') cerrarBorrador();
+  else if (m.tipo === 'borrador_error')  mostrarAviso(m.texto);
 };
+
+/* ---------- borrador de correo ---------- */
+
+let modo = 'completo';    // 'destinatario' = solo se pide a quien va
+const velo  = document.getElementById('velo');
+const bPara = document.getElementById('b-para');
+const bAsun = document.getElementById('b-asunto');
+const bMsg  = document.getElementById('b-mensaje');
+const bAviso= document.getElementById('b-aviso');
+const bEnv  = document.getElementById('b-enviar');
+
+function mostrarAviso(t) {
+  bAviso.textContent = t || '';
+  bAviso.hidden = !t;
+  bEnv.disabled = false;
+}
+
+function abrirBorrador(m) {
+  bPara.value = m.destinatario || '';
+  bAsun.value = m.asunto || '';
+  bMsg.value  = m.mensaje || '';
+  mostrarAviso('');
+  bEnv.disabled = false;
+
+  // Dos modos. En "destinatario" solo se pide a quien va: es lo unico
+  // que la voz no puede dar, porque una direccion mal oida no se
+  // arregla repitiendola. El asunto y el texto los pregunta hablando.
+  modo = m.modo || 'completo';
+  const soloPara = modo === 'destinatario';
+  bAsun.closest('.campo').hidden = soloPara;
+  bMsg.closest('.campo').hidden  = soloPara;
+  document.getElementById('sobre-titulo').textContent =
+    soloPara ? '¿A quién se lo mando?' : 'Revisa el correo antes de enviarlo';
+  bEnv.textContent = soloPara ? 'Continuar' : 'Enviar';
+
+  // La agenda alimenta el desplegable, pero el campo es libre: se puede
+  // teclear una direccion de alguien que no este en ella.
+  document.getElementById('b-agenda').innerHTML =
+    (m.contactos || []).map(c => {
+      const o = document.createElement('option');
+      o.value = c.nombre; o.label = c.email;
+      return o.outerHTML;
+    }).join('');
+
+  velo.hidden = false;
+  // Sin destinatario, el cursor va ahi: es lo que hay que arreglar.
+  // Con destinatario, al final del mensaje, que es lo que se retoca.
+  if (soloPara || !bPara.value) { bPara.focus(); }
+  else { bMsg.focus(); bMsg.setSelectionRange(bMsg.value.length, bMsg.value.length); }
+}
+
+function cerrarBorrador() {
+  velo.hidden = true;
+  bEnv.disabled = false;
+}
+
+document.getElementById('sobre').addEventListener('submit', e => {
+  e.preventDefault();
+  if (!sock || sock.readyState !== WebSocket.OPEN) return;
+  mostrarAviso('');
+  bEnv.disabled = true;             // que un doble clic no mande dos correos
+
+  if (modo === 'destinatario') {
+    // Solo se manda a quien va; el servidor sigue preguntando por voz
+    sock.send(JSON.stringify({
+      cmd: 'borrador_destinatario',
+      destinatario: bPara.value,
+    }));
+    return;
+  }
+  sock.send(JSON.stringify({
+    cmd: 'borrador_enviar',
+    destinatario: bPara.value,
+    asunto: bAsun.value,
+    mensaje: bMsg.value,
+  }));
+});
+
+document.getElementById('b-cancelar').addEventListener('click', () => {
+  cerrarBorrador();
+  if (sock && sock.readyState === WebSocket.OPEN)
+    sock.send(JSON.stringify({cmd: 'borrador_cancelar'}));
+});
 
 conectar();
 
@@ -281,7 +501,19 @@ function alternar() {
 }
 
 addEventListener('keydown', e => {
-  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); alternar(); }
+  // Con el borrador abierto el teclado es para escribir, no para el micro:
+  // cada espacio del mensaje habria disparado una grabacion.
+  if (!velo.hidden) {
+    if (e.key === 'Escape') document.getElementById('b-cancelar').click();
+    // Ctrl+Enter manda sin soltar el teclado
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey))
+      document.getElementById('sobre').requestSubmit();
+    return;
+  }
+  const escribiendo = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
+  if (e.code === 'Space' && !e.repeat && !escribiendo) {
+    e.preventDefault(); alternar();
+  }
 });
 document.querySelector('.nucleo').addEventListener('click', alternar);
 </script>

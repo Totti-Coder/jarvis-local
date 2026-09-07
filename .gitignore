@@ -2,9 +2,14 @@
 .env
 credentials.json
 token.json
-# la plantilla si se sube: no lleva secretos
+# la agenda lleva correos de otras personas
+contactos.json
+# tus atajos pueden llevar rutas privadas
+atajos.json
+# las plantillas SI se suben: no llevan datos reales
 !.env.example
-!credentials.EJEMPLO.json
+!contactos.EJEMPLO.json
+!atajos.EJEMPLO.json
 
 # ---- TUS DATOS ----
 # la base de datos son tus tareas y tus datos personales

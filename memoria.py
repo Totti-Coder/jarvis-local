@@ -489,6 +489,39 @@ def _buscar_rango(t):
     return h0, m0, h1, m1, resto.strip()
 
 
+def _fin_de_semana(t, ahora):
+    """"El fin de semana" son viernes, sábado y domingo enteros.
+
+    Se cuenta el VIERNES porque para quien pregunta el finde empieza al
+    salir de trabajar el viernes, no el sábado por la mañana.
+
+    Y si ya se está dentro (viernes, sábado o domingo), "este fin de
+    semana" es el de ahora mismo, no el de dentro de siete días: en
+    domingo por la mañana, preguntar por el finde es preguntar por hoy.
+
+    Devuelve None si la frase no habla de esto.
+    """
+    if not re.search(r"\bfin(es)? de semana\b|\bfinde\b", t):
+        return None
+
+    hoy = ahora.date()
+    dia = hoy.weekday()                       # lunes=0 ... domingo=6
+    if dia >= 4:                              # ya es viernes, sábado o domingo
+        viernes = hoy - timedelta(days=dia - 4)
+    else:
+        viernes = hoy + timedelta(days=4 - dia)
+
+    if re.search(r"\bproximo\b|\bsiguiente\b|que viene", t):
+        viernes += timedelta(days=7)
+
+    inicio = datetime.combine(viernes, datetime.min.time())
+    # Hasta el domingo a las 23:59:59, igual que un día suelto: la
+    # medianoche del lunes metería dentro cosas de la semana siguiente.
+    fin = datetime.combine(viernes + timedelta(days=3),
+                           datetime.min.time()) - timedelta(seconds=1)
+    return inicio, fin
+
+
 def interpretar_ventana(texto, ahora=None):
     """Convierte "en 30 minutos" o "mañana" en un intervalo (desde, hasta).
 
@@ -502,6 +535,12 @@ def interpretar_ventana(texto, ahora=None):
         return None, None
     ahora = ahora or datetime.now()
     t = _sin_tildes(texto).strip()
+
+    # El fin de semana se mira lo primero: son tres días seguidos y no
+    # encaja en nada de lo de abajo, que va de un día o de un rato.
+    finde = _fin_de_semana(t, ahora)
+    if finde:
+        return finde
 
     # Rato: de ahora hasta el momento pedido
     rel = _buscar_relativo(t, ahora)
@@ -700,6 +739,30 @@ def recordar_dato(texto):
         con.execute("INSERT INTO datos (texto, creada) VALUES (?,?)",
                     (texto, datetime.now().isoformat()))
     return "Vale, me acuerdo."
+
+
+# Empiezos que delatan una frase SIN sujeto: "se llama Toti", "vive en Madrid".
+# Son el formato viejo, de cuando el prompt le pegaba "El usuario" delante.
+SIN_SUJETO = ("se ", "es ", "esta ", "vive ", "tiene ", "trabaja ", "estudia ",
+              "le gusta", "prefiere", "odia", "sabe ", "quiere", "necesita")
+
+
+def como_frase(dato):
+    """Convierte un dato guardado en una frase que se entienda sola.
+
+    Antes se guardaban trozos ("se llama Toti") y el prompt les añadía
+    "El usuario" delante. Eso rompía con la gente del entorno: "mi novia se
+    llama Verónica" acababa guardado como "se llama Verónica", y al leerlo
+    salía "El usuario se llama Verónica", que dice justo lo contrario.
+    Ahora se guardan frases completas ("su novia se llama Verónica") y esto
+    solo pone el sujeto a las que vienen del formato antiguo.
+    """
+    d = dato.strip()
+    if not d:
+        return ""
+    if _sin_tildes(d).startswith(SIN_SUJETO):
+        return f"El usuario {d}"
+    return d[0].upper() + d[1:]
 
 
 def datos_conocidos(limite=25):

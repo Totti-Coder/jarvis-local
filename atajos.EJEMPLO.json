@@ -1,0 +1,60 @@
+{
+  "_ayuda": [
+    "Tus propias tareas del sistema. Copia este fichero como atajos.json",
+    "y pon las tuyas.",
+    "",
+    "COMO FUNCIONA",
+    "  nombre    lo que dices en voz alta para lanzarlo",
+    "  alias     otras formas de decirlo (opcional)",
+    "  comando   lista de argumentos, NO una cadena con espacios:",
+    "              BIEN  [\"git\", \"pull\"]",
+    "              MAL   \"git pull\"",
+    "            Se ejecuta sin shell, asi que no hay riesgo de inyeccion.",
+    "  cwd       carpeta donde ejecutarlo (opcional)",
+    "  dice      lo que Jarvis contesta al lanzarlo (opcional)",
+    "  confirma  true si es peligroso: pedira que lo repitas (opcional)",
+    "",
+    "POR QUE ASI Y NO 'ejecuta lo que te diga'",
+    "  Whisper se equivoca transcribiendo. Aqui el comando lo escribes TU,",
+    "  con calma y revisandolo. La voz solo elige cual de los tuyos lanzar.",
+    "  Lo peor que puede pasar con una frase mal oida es que dispare otro",
+    "  atajo tuyo, nunca un comando que no hayas escrito."
+  ],
+
+  "atajos": [
+    {
+      "nombre": "copia de seguridad",
+      "alias": ["haz una copia", "backup"],
+      "comando": ["robocopy", "C:\\Users\\TU_USUARIO\\Documents",
+                  "D:\\Backup\\Documents", "/MIR", "/R:1", "/W:1"],
+      "dice": "Haciendo la copia de seguridad."
+    },
+    {
+      "nombre": "actualizar el proyecto",
+      "alias": ["git pull", "baja los cambios"],
+      "comando": ["git", "pull"],
+      "cwd": "C:\\Users\\TU_USUARIO\\Desktop\\mi-proyecto",
+      "dice": "Bajando los ultimos cambios."
+    },
+    {
+      "nombre": "modo trabajo",
+      "alias": ["ponme a trabajar", "empezamos"],
+      "comando": ["cmd", "/c", "start", "", "https://github.com"],
+      "dice": "Vamos alla."
+    },
+    {
+      "nombre": "limpiar temporales",
+      "alias": ["borra los temporales"],
+      "comando": ["cmd", "/c", "del", "/q", "/s", "%TEMP%\\*"],
+      "dice": "Limpiando archivos temporales.",
+      "confirma": true
+    },
+    {
+      "nombre": "apagar el monitor",
+      "alias": ["apaga la pantalla"],
+      "comando": ["powershell", "-NoProfile", "-Command",
+                  "(Add-Type '[DllImport(\"user32.dll\")]public static extern int SendMessage(int hWnd,int hMsg,int wParam,int lParam);' -Name a -Pas)::SendMessage(-1,0x0112,0xF170,2)"],
+      "dice": "Apagando la pantalla."
+    }
+  ]
+}

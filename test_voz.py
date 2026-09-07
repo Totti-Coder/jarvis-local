@@ -4,7 +4,18 @@ No se puede "oír" desde un test, así que se comprueba lo medible:
 que suena varias veces seguidas, que dura lo que debe, que se corta
 cuando toca, y que los números se pronuncian como palabras.
 
-Uso:  python test_voz.py
+POR QUE NO SE OYE NADA AL EJECUTARLO
+
+Por defecto los altavoces se sustituyen por uno de mentira que consume
+el audio en tiempo real pero sin emitirlo. Lo que se está probando es
+la maquinaria de la cola y del corte, no la tarjeta de sonido, así que
+las medidas valen igual. Sonando de verdad, cualquiera que estuviera
+delante oía a Jarvis soltar "frase número uno, frase número dos" a todo
+volumen, y eso no lo tiene que oír nadie.
+
+Uso:
+    python test_voz.py              en silencio
+    python test_voz.py --sonido     por los altavoces, para comprobarlo a oído
 """
 
 import sys
@@ -13,6 +24,40 @@ import time
 
 sys.stdout.reconfigure(encoding="utf-8")
 import servidor
+
+CON_SONIDO = "--sonido" in sys.argv
+
+
+class Altavoz:
+    """Altavoz de mentira: se traga el audio en tiempo real, sin ruido.
+
+    Imita lo justo de sounddevice que usa servidor.hablar(): play(),
+    get_stream().active y stop(). Así el corte a media frase se sigue
+    midiendo de verdad.
+    """
+
+    def __init__(self):
+        self.fin = 0.0
+
+    @property
+    def active(self):
+        return time.monotonic() < self.fin
+
+    def play(self, audio, sr):
+        self.fin = time.monotonic() + len(audio) / float(sr)
+
+    def get_stream(self):
+        return self if self.active else None
+
+    def stop(self):
+        self.fin = 0.0
+
+
+if not CON_SONIDO:
+    _falso = Altavoz()
+    servidor.sd.play = _falso.play
+    servidor.sd.get_stream = _falso.get_stream
+    servidor.sd.stop = _falso.stop
 
 fallos = 0
 
@@ -42,7 +87,8 @@ for texto, esperado in CIFRAS:
 
 print()
 print("=" * 66)
-print("REPRODUCCIÓN")
+print("REPRODUCCIÓN" + ("  (por los altavoces)" if CON_SONIDO
+                        else "  (en silencio: --sonido para oírlo)"))
 print("=" * 66)
 
 # El fallo de pyttsx3 era que solo sonaba la primera frase
