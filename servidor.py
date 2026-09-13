@@ -16,6 +16,7 @@ import os
 import queue
 import re
 import site
+import struct
 import sys
 import threading
 import time
@@ -266,6 +267,56 @@ class Microfono:
         return self.audio()
 
 
+class MicrofonoRemoto(Microfono):
+    """El audio llega del navegador, no de la tarjeta de sonido.
+
+    Es lo que permite hablarle desde el móvil: allí el micrófono lo
+    captura el navegador con getUserMedia y manda el PCM por el mismo
+    WebSocket. Hereda de Microfono a propósito, para que el espectro, el
+    recorte por segundos y el volcado a Whisper sean EXACTAMENTE el
+    mismo código. Todo lo que consume audio —VAD, parciales, anillo— no
+    se entera de cuál de las dos fuentes tiene delante.
+
+    Solo cambia de dónde salen los trozos: aquí los mete alimentar().
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._activo = False
+
+    def empezar(self):
+        with self._lock:
+            self.trozos = []
+        self.nivel = 0.0
+        self._inicio = time.monotonic()
+        self._activo = True
+
+    def segundos_grabados(self):
+        # El de arriba mira self._stream, que aquí no existe nunca
+        return time.monotonic() - self._inicio if self._activo else 0.0
+
+    def alimentar(self, crudo):
+        """Mete un trozo de PCM recién llegado del navegador.
+
+        Viene en int16: la mitad de bytes que float32, y por wifi eso se
+        nota (32 KB/s contra 64). Whisper quiere float32 normalizado, así
+        que se convierte aquí.
+        """
+        if not self._activo:
+            return          # llegó tarde, después de soltar el botón
+        muestras = np.frombuffer(crudo, dtype=np.int16).astype(np.float32) / 32768.0
+        if not len(muestras):
+            return
+        with self._lock:
+            self.trozos.append(muestras.reshape(-1, 1))
+        self.nivel = min(1.0, float(np.sqrt(np.mean(muestras ** 2))) * 12)
+
+    def parar(self):
+        self._activo = False
+        self.nivel = 0.0
+        return self.audio()
+
+
 # ---------------------------------------------------------------
 # VOZ (en su propio hilo: SAPI de Windows lo necesita)
 # ---------------------------------------------------------------
@@ -276,6 +327,18 @@ _cola_voz = queue.Queue()
 # el hilo de voz (para purgar la frase en curso) como hablar() (para no
 # encolar las que aún no han empezado).
 _cancelar_voz = threading.Event()
+
+# A dónde sale la voz sintetizada. None = altavoces del PC. Si no, una
+# función que recibe (muestras float32, frecuencia) y la manda al
+# navegador. Es global, como la cola de voz, porque solo puede haber una
+# conversación a la vez: un micrófono, un modelo y una voz.
+_salida_voz = None
+
+
+def salida_voz_a(funcion):
+    """Redirige la voz al navegador, o a los altavoces con None."""
+    global _salida_voz
+    _salida_voz = funcion
 
 
 def _crear_voz_piper():
@@ -304,6 +367,14 @@ def _crear_voz_piper():
         for trozo in voz.synthesize(t, ajustes):
             if _cancelar_voz.is_set():
                 return
+            destino = _salida_voz
+            if destino is not None:
+                # Hablándole desde el móvil, la voz tiene que salir POR EL
+                # MÓVIL. Si sonara por los altavoces del PC estarías
+                # hablándole a un aparato y escuchándole en otro.
+                if not _reproducir_fuera(destino, trozo):
+                    return
+                continue
             sd.play(trozo.audio_float_array, trozo.sample_rate)
             # Se espera vigilando la cancelación en vez de usar sd.wait(),
             # que bloquearía sin posibilidad de cortar.
@@ -317,6 +388,31 @@ def _crear_voz_piper():
                 time.sleep(0.03)
 
     return decir
+
+
+def _reproducir_fuera(destino, trozo):
+    """Manda un trozo al navegador y espera lo que dura. False si se corta.
+
+    Se espera a propósito, en vez de soltarlo todo de golpe: si el
+    navegador tuviera treinta segundos de audio en el buffer, pulsar para
+    interrumpir no callaría nada. Mandándolo al ritmo al que se oye, lo
+    que queda por decir todavía no ha salido de aquí.
+    """
+    muestras = trozo.audio_float_array
+    frecuencia = trozo.sample_rate
+    try:
+        destino(np.asarray(muestras, dtype=np.float32), frecuencia)
+    except Exception as e:
+        print(f"[voz] no se pudo enviar al navegador: {e}")
+        return False
+
+    dura = len(muestras) / float(frecuencia)
+    fin = time.monotonic() + dura
+    while time.monotonic() < fin:
+        if _cancelar_voz.is_set():
+            return False
+        time.sleep(0.03)
+    return True
 
 
 def _crear_voz_windows():
@@ -467,7 +563,27 @@ def permitir_voz():
 _candado_whisper = threading.Lock()
 
 
+# Silencio que se pega delante y detrás de lo que se manda a Whisper.
+#
+# Whisper entiende peor la primera palabra cuando el audio empieza de
+# golpe, sin nada de sala delante. Se nota sobre todo desde el navegador:
+# manda muestras en el mismo instante en que abre el micro, así que la
+# primera sílaba cae en la muestra cero. Con el micro del PC hay algo de
+# margen porque el stream ya estaba abierto.
+#
+# Cuidado con lo que promete esto: MEJORA, no arregla. Medido sobre voz
+# sintética, que es el caso peor, acierta la primera palabra en 1 de 4
+# frases sin colchón y en 3 de 4 con 0,3 s. Pero 0,5 s vuelve a bajar a
+# 2 de 4, así que no hay un óptimo real: es ayudar al modelo, no
+# corregirlo. Se deja porque el coste es cero y nunca empeora.
+COLCHON_S = 0.3
+
+
 def transcribir(audio, modelo, etiqueta=""):
+    if audio is not None and len(audio):
+        silencio = np.zeros(int(COLCHON_S * FRECUENCIA), dtype=np.float32)
+        audio = np.concatenate([silencio, np.asarray(audio, dtype=np.float32),
+                                silencio])
     t0 = time.monotonic()
     with _candado_whisper:
         espera = time.monotonic() - t0
@@ -1520,11 +1636,29 @@ async def ws(sock: WebSocket):
     tarea_limite = None
     tarea_silencio = None
 
+    bucle_principal = asyncio.get_running_loop()
+
     async def enviar(**datos):
         try:
             await sock.send_text(json.dumps(datos))
         except Exception:
             pass
+
+    def poner_voz_en_cola(muestras, frecuencia):
+        """Manda un trozo de voz al navegador. Lo llama el hilo de voz.
+
+        El hilo de voz no es asíncrono y no puede tocar el socket, así que
+        el envío se programa en el bucle principal. Va en int16 con una
+        cabecera de 4 bytes con la frecuencia: Piper sintetiza a 22050 y
+        el navegador tiene que saberlo para no reproducirlo agudo.
+        """
+        pcm = (np.clip(muestras, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
+        paquete = struct.pack("<I", int(frecuencia)) + pcm
+        try:
+            asyncio.run_coroutine_threadsafe(sock.send_bytes(paquete),
+                                             bucle_principal)
+        except RuntimeError:
+            pass          # el bucle ya no existe: la conexión se cerró
 
     async def decir_suelto(frase, etiqueta=None):
         """Dice algo que no contesta a nada hablado: los botones del panel."""
@@ -2151,9 +2285,24 @@ async def ws(sock: WebSocket):
         async def receptor():
             try:
                 while True:
-                    await comandos.put(json.loads(await sock.receive_text()))
+                    mensaje = await sock.receive()
+                    if mensaje.get("type") == "websocket.disconnect":
+                        break
+                    crudo = mensaje.get("bytes")
+                    if crudo is not None:
+                        # El audio NO pasa por la cola de comandos: llegan
+                        # decenas de trozos por segundo y taparían las
+                        # pulsaciones, que es justo lo que hay que atender
+                        # rápido para poder interrumpirle. Va directo.
+                        if isinstance(micro, MicrofonoRemoto):
+                            micro.alimentar(crudo)
+                        continue
+                    texto = mensaje.get("text")
+                    if texto is not None:
+                        await comandos.put(json.loads(texto))
             except Exception:
-                await comandos.put(FIN)
+                pass
+            await comandos.put(FIN)
 
         tarea_receptor = asyncio.create_task(receptor())
 
@@ -2161,6 +2310,18 @@ async def ws(sock: WebSocket):
             mensaje = await comandos.get()
             if mensaje is FIN:
                 break
+            # El navegador avisa de que tiene micrófono propio (móvil, o
+            # cualquier pestaña servida por https). A partir de aquí el
+            # audio entra y sale por él, no por la tarjeta de sonido.
+            if mensaje.get("cmd") == "micro_navegador":
+                if not isinstance(micro, MicrofonoRemoto):
+                    micro.parar()
+                    micro = MicrofonoRemoto()
+                salida_voz_a(poner_voz_en_cola)
+                print("[audio] micrófono y voz por el navegador")
+                await enviar(tipo="audio_navegador", valor=True)
+                continue
+
             if mensaje.get("cmd") in CMDS_BORRADOR:
                 await resolver_borrador(mensaje)
                 continue
@@ -2201,6 +2362,9 @@ async def ws(sock: WebSocket):
                     continue
                 # Pulsó mientras pensaba o hablaba: se le calla en el acto
                 cortar_voz()
+                # Y el navegador tira lo que le quede en el buffer: si no,
+                # seguiria oyendose la frase por el movil despues de callarle
+                await enviar(tipo="voz_corta")
                 tarea_turno.cancel()
                 try:
                     await tarea_turno
@@ -2228,6 +2392,9 @@ async def ws(sock: WebSocket):
                 t.cancel()
         cortar_voz()          # si se va con el asistente hablando, que calle
         permitir_voz()        # y que la próxima conexión pueda hablar
+        # La salida de voz es global: si esta conexion la habia desviado al
+        # navegador, hay que devolverla o la siguiente se quedaria muda.
+        salida_voz_a(None)
         micro.parar()
 
 
@@ -2260,12 +2427,39 @@ if __name__ == "__main__":
     # implica, para que sea una decisión y no un descuido.
     abierto = "--red" in sys.argv
     host = "0.0.0.0" if abierto else "127.0.0.1"
+    ssl = {}
 
     if abierto:
+        # Por la red hace falta HTTPS, y no por gusto: el micrófono del
+        # navegador (getUserMedia) solo existe en "contexto seguro". Por
+        # http:// desde el móvil la API ni siquiera aparece, así que no
+        # habría forma de hablarle. localhost sí cuenta como seguro, por
+        # eso en local se sigue usando http y nadie ve ningún aviso.
+        import certificado
+        if not certificado.existe():
+            print()
+            print("  Falta el certificado HTTPS, y sin él el móvil no puede")
+            print("  usar el micrófono. Se crea una vez con:")
+            print()
+            print("      python certificado.py")
+            print()
+            sys.exit(1)
+
+        ssl = {"ssl_keyfile": str(certificado.CLAVE),
+               "ssl_certfile": str(certificado.CERT)}
+        dias = certificado.caduca_en()
+        if dias is not None and dias < 15:
+            print(f"\n  Aviso: el certificado caduca en {dias} días."
+                  "  Renuévalo con: python certificado.py")
+
         print()
         print("  " + "!" * 62)
         print("  ABIERTO A LA RED LOCAL")
-        print(f"  Desde el móvil:  http://{ip_en_la_red()}:8000")
+        print(f"  Desde el móvil:  https://{ip_en_la_red()}:8000")
+        print()
+        print("  La primera vez el móvil avisará de que la conexión no es")
+        print("  privada: el certificado lo firma tu PC y no hay autoridad")
+        print("  que pueda certificar una IP privada. Continúa y acepta.")
         print()
         print("  Cualquiera en esta wifi puede usar Jarvis: no hay")
         print("  contraseña. Podría apagarte el ordenador o mandar")
@@ -2276,4 +2470,4 @@ if __name__ == "__main__":
         print("  (solo desde este ordenador. Para el móvil: python servidor.py --red)")
     print()
 
-    uvicorn.run(app, host=host, port=8000, log_level="warning")
+    uvicorn.run(app, host=host, port=8000, log_level="warning", **ssl)

@@ -19,7 +19,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-128_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-174_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -237,8 +237,19 @@ Los modelos de Whisper se descargan solos la primera vez. **Ya funciona**:
 agenda, conversación, búsqueda web y control del PC, sin registrarte en ningún
 sitio.
 
-> `python servidor.py --red` lo abre a tu wifi para verlo desde el móvil.
-> Avisa de lo que implica: no hay autenticación.
+**Desde el móvil** (misma wifi), dos comandos más:
+
+```bash
+python certificado.py       # una vez: certificado HTTPS para tu red
+python servidor.py --red    # → https://TU-IP:8000
+```
+
+El móvil avisará de que la conexión no es privada: el certificado lo firma
+tu PC y no hay autoridad que pueda certificar una IP privada. Continúa y
+acepta el permiso del micrófono.
+
+> [!WARNING]
+> Con `--red` no hay autenticación: cualquiera en esa wifi puede usarlo.
 
 <details>
 <summary><b>🔑 Google Calendar y Gmail (opcional)</b> — lo único que pide credenciales</summary>
@@ -332,7 +343,7 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**128 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**174 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 93 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
@@ -340,9 +351,10 @@ determinista del sistema y la única forma de saber si una mejora lo es.
 ```bash
 python eval_router.py     # 93 frases · acierto por categoría · % global
 python test_memoria.py    # fechas y horas habladas          (37)
-python test_ventanas.py   # franjas, tramos, fines de semana (25)
+python test_ventanas.py   # franjas, tramos, fines de semana (32)
 python test_horas.py      # ambigüedad de "a las 8.40"       (20)
 python test_correo.py     # MIME, firmas, citas, fechas      (19)
+python test_movil.py      # audio del navegador desde el móvil (8)
 ```
 
 <details>
@@ -402,6 +414,7 @@ servidor.py     FastAPI · WebSocket · router · 12 herramientas · voz
 memoria.py      SQLite + intérprete de fechas en español
 sistema.py      Control del PC: lista blanca, Steam, atajos
 correo.py       Gmail: leer, resumir, redactar, enviar
+certificado.py  HTTPS autofirmado, para el micrófono del móvil
 buscar.py       Búsqueda web y lectura de páginas
 calendario.py   Espejo en Google Calendar
 index.html      Interfaz + popup del correo (Three.js)
@@ -471,8 +484,9 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
 |:---|:---|
 | ✅ Pipeline voz a voz con streaming | ⬜ Mensajes por Discord |
 | ✅ Agenda persistente + tool calling | ⬜ Avisos a la hora, sin preguntar |
-| ✅ Intérprete de fechas en español | ⬜ Captura de audio en el navegador |
+| ✅ Intérprete de fechas en español | |
 | ✅ VAD con Silero (corte automático) | ⬜ `docker compose up` |
+| ✅ Hablarle desde el móvil (HTTPS + AudioWorklet) | |
 | ✅ Correo por Gmail (leer y enviar) | ⬜ Abstracción `LLMProvider` |
 | ✅ Control del PC con lista blanca | |
 | ✅ Eval suite del router | |
@@ -481,8 +495,9 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
 
 ## ⚠️ Limitaciones conocidas
 
-- **El micrófono es el del PC.** Lo captura Python, no el navegador. Moverlo
-  al navegador exige HTTPS (`getUserMedia` no va sobre `http://`).
+- **Desde el móvil hace falta aceptar el certificado** la primera vez. Lo
+  firma tu propio PC, así que el navegador avisa. No hay forma de evitarlo
+  sin un dominio público.
 - **El control del sistema es de Windows** (`taskkill`, registro, rutas).
 - **No avisa solo.** Hay que preguntarle o abrir la página.
 - **Horas en letra.** "A las ocho cuarenta" no se interpreta; en cifras sí, y

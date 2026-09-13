@@ -6,6 +6,9 @@ token.json
 contactos.json
 # tus atajos pueden llevar rutas privadas
 atajos.json
+# clave privada del certificado HTTPS: se regenera con certificado.py
+clave.pem
+cert.pem
 # las plantillas SI se suben: no llevan datos reales
 !.env.example
 !contactos.EJEMPLO.json

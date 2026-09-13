@@ -302,11 +302,19 @@ let sock = null;
 let reintento = 0;
 
 function conectar() {
-  sock = new WebSocket(`ws://${location.host}/ws`);
+  // wss:// cuando la pagina va por https. Una pagina segura NO puede abrir
+  // un WebSocket inseguro: el navegador lo bloquea por contenido mixto, sin
+  // avisar en la interfaz. Se deduce del protocolo en vez de fijarlo.
+  const protocolo = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  sock = new WebSocket(`${protocolo}//${location.host}/ws`);
+  sock.binaryType = 'arraybuffer';     // los trozos de voz llegan en binario
 
   sock.onopen = () => {
     reintento = 0;
     document.getElementById('conexion').textContent = 'en línea';
+    // Solo una vez: reconectar no debe volver a pedir el permiso
+    if (!micDisponible && puedeMicro()) prepararMicro();
+    else if (micDisponible) sock.send(JSON.stringify({cmd: 'micro_navegador'}));
   };
 
   sock.onclose = () => {
@@ -326,6 +334,8 @@ function conectar() {
 }
 
 const alMensaje = ev => {
+  // Los trozos de voz llegan en binario por el mismo socket
+  if (ev.data instanceof ArrayBuffer) { reproducirVoz(ev.data); return; }
   const m = JSON.parse(ev.data);
 
   if (m.tipo === 'nivel') {
@@ -345,7 +355,21 @@ const alMensaje = ev => {
     }
   }
 
-  else if (m.tipo === 'estado') fijarEstado(m.valor);
+  else if (m.tipo === 'estado') {
+    fijarEstado(m.valor);
+    // Mandar audio solo mientras el servidor dice que escucha. Se ata a
+    // SU estado y no a la pulsacion porque el servidor tambien cierra la
+    // grabacion por su cuenta (corte por silencio, limite de tiempo), y
+    // ademas asi no se envia nada antes de que haya quien lo reciba.
+    micActivo = micDisponible && m.valor === 'escuchando';
+  }
+
+  // Le han interrumpido: tirar lo que quede sonando en este aparato
+  else if (m.tipo === 'voz_corta') callarVoz();
+
+  else if (m.tipo === 'audio_navegador') {
+    document.getElementById('t-oido').title = 'micrófono del navegador';
+  }
 
   else if (m.tipo === 'parcial') {
     if (!provisional) provisional = nuevaLinea('tu provisional', 'Tú', '');
@@ -495,9 +519,95 @@ conectar();
 
 /* ---------- control ---------- */
 
+/* ---------- micrófono del navegador (móvil) ----------
+   El micro del PC lo captura Python. Desde el móvil eso no sirve: hay que
+   capturar aquí y mandar el PCM por el mismo WebSocket. Solo es posible en
+   contexto seguro (https o localhost); si no, getUserMedia ni existe. */
+
+let audioCtx = null, micNodo = null, micStream = null, micActivo = false;
+let micDisponible = false;
+
+function puedeMicro() {
+  return window.isSecureContext && navigator.mediaDevices?.getUserMedia;
+}
+
+async function prepararMicro() {
+  if (!puedeMicro()) return false;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({audio: {
+      channelCount: 1,
+      // Sin esto, en el móvil se oye a sí mismo por el altavoz y se
+      // transcribe su propia voz encima de la tuya.
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+    }});
+  } catch (e) {
+    console.warn('micrófono denegado:', e.name);
+    return false;
+  }
+
+  // Se pide 16 kHz directamente; si el navegador lo ignora (iOS abre a
+  // 48 kHz), el worklet remuestrea por su cuenta.
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 16000});
+  await audioCtx.audioWorklet.addModule('/static/captura.js');
+
+  micNodo = new AudioWorkletNode(audioCtx, 'captura');
+  micNodo.port.onmessage = ev => {
+    if (micActivo && sock?.readyState === WebSocket.OPEN) sock.send(ev.data);
+  };
+  audioCtx.createMediaStreamSource(micStream).connect(micNodo);
+
+  micDisponible = true;
+  sock.send(JSON.stringify({cmd: 'micro_navegador'}));
+  document.querySelector('.pista').innerHTML =
+    'Pulsa <kbd>el núcleo</kbd> y habla. Se env&iacute;a solo al callar';
+  return true;
+}
+
+/* ---------- reproducir la voz que llega del servidor ----------
+   Llega en trozos: 4 bytes de frecuencia y detrás el PCM en int16. Se
+   encadenan en el tiempo para que no haya silencios ni solapes entre uno
+   y el siguiente. */
+
+let siguienteHueco = 0;
+const sonando = new Set();
+
+function reproducirVoz(datos) {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  const frecuencia = new DataView(datos).getUint32(0, true);
+  const pcm = new Int16Array(datos, 4);
+  const buffer = audioCtx.createBuffer(1, pcm.length, frecuencia);
+  const canal = buffer.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) canal[i] = pcm[i] / 32768;
+
+  const fuente = audioCtx.createBufferSource();
+  fuente.buffer = buffer;
+  fuente.connect(audioCtx.destination);
+
+  // Encadenado: cada trozo empieza donde acabó el anterior, nunca antes
+  // de "ahora". Sin esto se pisarían o dejarían huecos audibles.
+  const ahora = audioCtx.currentTime;
+  const empieza = Math.max(ahora, siguienteHueco);
+  fuente.start(empieza);
+  siguienteHueco = empieza + buffer.duration;
+
+  sonando.add(fuente);
+  fuente.onended = () => sonando.delete(fuente);
+}
+
+function callarVoz() {
+  for (const f of sonando) { try { f.stop(); } catch (e) {} }
+  sonando.clear();
+  siguienteHueco = 0;
+}
+
 function alternar() {
-  if (sock && sock.readyState === WebSocket.OPEN)
-    sock.send(JSON.stringify({cmd: 'alternar'}));
+  if (!sock || sock.readyState !== WebSocket.OPEN) return;
+  // Los navegadores exigen un gesto del usuario para dejar sonar audio.
+  // Esta pulsación es ese gesto.
+  if (audioCtx?.state === 'suspended') audioCtx.resume();
+  sock.send(JSON.stringify({cmd: 'alternar'}));
 }
 
 addEventListener('keydown', e => {
