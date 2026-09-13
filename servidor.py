@@ -125,6 +125,10 @@ Si unas siglas o una palabra pueden significar varias cosas, pregunta a cuál
 se refiere en vez de elegir una al azar.
 Nunca digas que no puedes ayudar por no tener una función o herramienta:
 eres un asistente con conocimientos generales y puedes charlar de lo que sea.
+Tampoco digas "no puedo ayudarte con eso" ni "no tengo acceso a internet":
+SÍ tienes, y si hacía falta buscar ya se ha buscado antes de llegar aquí.
+Si te piden una opinión o un consejo, dalo. Si te preguntan algo que no
+sabes del todo, cuenta lo que sí sepas. Siempre contestas a algo.
 
 CIFRAS Y HORAS
 Los números se leen bien tal cual, así que puedes escribir "las 8 y media".
@@ -579,7 +583,37 @@ _candado_whisper = threading.Lock()
 COLCHON_S = 0.3
 
 
+# Con --audio-debug, cada turno se guarda en _audio/ tal y como llegó.
+# Es la única forma de dejar de suponer por qué se entiende mal desde el
+# móvil: se escucha y se mira el nivel, en vez de adivinar.
+GUARDAR_AUDIO = "--audio-debug" in sys.argv
+_DIR_AUDIO = Path(__file__).parent / "_audio"
+
+
+def guardar_audio(audio, etiqueta="turno"):
+    """Escribe un WAV de 16 kHz con lo que se va a transcribir."""
+    if not GUARDAR_AUDIO or audio is None or not len(audio):
+        return
+    import wave
+    try:
+        _DIR_AUDIO.mkdir(exist_ok=True)
+        nombre = _DIR_AUDIO / f"{time.strftime('%H%M%S')}_{etiqueta}.wav"
+        with wave.open(str(nombre), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(FRECUENCIA)
+            w.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+        pico = float(np.abs(audio).max())
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        print(f"[audio] {nombre.name}  {len(audio)/FRECUENCIA:.1f}s  "
+              f"pico {pico:.2f}  rms {rms:.3f}")
+    except Exception as e:
+        print(f"[audio] no se pudo guardar: {e}")
+
+
 def transcribir(audio, modelo, etiqueta=""):
+    if etiqueta == "final":
+        guardar_audio(audio)
     if audio is not None and len(audio):
         silencio = np.zeros(int(COLCHON_S * FRECUENCIA), dtype=np.float32)
         audio = np.concatenate([silencio, np.asarray(audio, dtype=np.float32),
@@ -1054,6 +1088,20 @@ def merece_busqueda(frase):
     se sale fuera cuando la pregunta pide algo que cambia con el tiempo.
     """
     t = _sin_tildes(frase)
+    # Si lo pide con todas las letras, se busca y no se discute. Este filtro
+    # existe para que el modelo no busque por su cuenta cosas que ya sabe,
+    # no para llevarle la contraria al usuario. Pasaba de verdad: a
+    # "tienes que buscar en internet cuáles son los mejores trabajos" le
+    # contestaba de memoria, y encima empezando por "no tengo acceso a
+    # internet" cuando sí lo tiene.
+    # El \w{0,4} del final recoge los pronombres pegados: búscaLO,
+    # consúltaMELO, míraLA. En español van dentro de la palabra y una
+    # lista cerrada de formas se queda corta siempre.
+    if re.search(r"\b(busca|buscar|mira|mirar|consulta|consultar|averigua|"
+                 r"averiguar|investiga|investigar|informate)\w{0,5}\b"
+                 r"[^.]{0,30}"
+                 r"\b(internet|la red|la web|google|online|en linea)\b", t):
+        return True
     if any(s in t for s in SENALES_ACTUALIDAD):
         return True
     # Un año reciente también cuenta: "quién ganó la liga en 2026"

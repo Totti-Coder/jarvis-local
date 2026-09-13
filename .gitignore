@@ -33,3 +33,4 @@ venv/
 .vscode/
 .idea/
 .claude/
+_audio/
