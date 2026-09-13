@@ -544,11 +544,21 @@ function puedeMicro() {
 async function prepararMicro() {
   if (!puedeMicro()) return false;
   try {
+    // Filtros DESACTIVADOS a propósito. En un PC dan igual, pero en
+    // Android echoCancellation conmuta el micro al modo de llamada:
+    // banda estrecha y compresión agresiva, pensado para que se te
+    // entienda por teléfono, no para reconocimiento de voz. Y
+    // noiseSuppression se come las consonantes sordas, que es justo lo
+    // que distingue "casa" de "caza".
+    //
+    // Se pueden quitar porque grabar y hablar no se solapan nunca: es
+    // por turnos, así que no hay eco del que defenderse.
+    //
+    // autoGainControl sí se deja: el móvil puede estar a un palmo o a
+    // un metro, y eso son 20 dB de diferencia.
     micStream = await navigator.mediaDevices.getUserMedia({audio: {
       channelCount: 1,
-      // Sin esto, en el móvil se oye a sí mismo por el altavoz y se
-      // transcribe su propia voz encima de la tuya.
-      echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      echoCancellation: false, noiseSuppression: false, autoGainControl: true,
     }});
   } catch (e) {
     console.warn('micrófono denegado:', e.name);
@@ -561,6 +571,13 @@ async function prepararMicro() {
   await audioCtx.audioWorklet.addModule('/static/captura.js');
 
   micNodo = new AudioWorkletNode(audioCtx, 'captura');
+  // El nodo TIENE que llegar al destino o el grafo puede no bombearlo.
+  // En Chrome de escritorio funciona igual, pero en el movil salia audio
+  // a tirones o entrecortado. Va por un gain a cero: se procesa, pero no
+  // se oye (si no, te oirias a ti mismo por el altavoz).
+  const mudo = audioCtx.createGain();
+  mudo.gain.value = 0;
+  mudo.connect(audioCtx.destination);
   micNodo.port.onmessage = ev => {
     if (sock?.readyState !== WebSocket.OPEN) return;
     if (micActivo) { sock.send(ev.data); return; }
@@ -574,9 +591,25 @@ async function prepararMicro() {
     }
   };
   audioCtx.createMediaStreamSource(micStream).connect(micNodo);
+  micNodo.connect(mudo);
+
+  // Que negocio de verdad el movil, para poder mirarlo en el servidor en
+  // vez de adivinar por que se entiende mal
+  const pista = micStream.getAudioTracks()[0];
+  const ajustes = pista?.getSettings?.() || {};
+  console.log('micro:', audioCtx.sampleRate, 'Hz', ajustes);
 
   micDisponible = true;
-  sock.send(JSON.stringify({cmd: 'micro_navegador'}));
+  sock.send(JSON.stringify({
+    cmd: 'micro_navegador',
+    contexto_hz: audioCtx.sampleRate,
+    ajustes: {
+      hz: ajustes.sampleRate, canales: ajustes.channelCount,
+      eco: ajustes.echoCancellation, ruido: ajustes.noiseSuppression,
+      ganancia: ajustes.autoGainControl, aparato: ajustes.deviceId ? 'sí' : 'no',
+    },
+    agente: navigator.userAgent.slice(0, 90),
+  }));
   document.querySelector('.pista').innerHTML =
     'Pulsa <kbd>el núcleo</kbd> y habla. Se env&iacute;a solo al callar';
   return true;

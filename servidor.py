@@ -2366,7 +2366,13 @@ async def ws(sock: WebSocket):
                     micro.parar()
                     micro = MicrofonoRemoto()
                 salida_voz_a(poner_voz_en_cola)
-                print("[audio] micrófono y voz por el navegador")
+                # Se imprime lo que el navegador ha negociado de verdad. Sin
+                # esto, "desde el móvil se entiende mal" solo se puede
+                # investigar adivinando.
+                print(f"[audio] micrófono y voz por el navegador "
+                      f"| contexto {mensaje.get('contexto_hz')} Hz "
+                      f"| pista {mensaje.get('ajustes')}")
+                print(f"[audio] {mensaje.get('agente', '')}")
                 await enviar(tipo="audio_navegador", valor=True)
                 continue
 
