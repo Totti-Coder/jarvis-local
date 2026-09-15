@@ -141,7 +141,15 @@ def conectar(interactivo=False):
             cred.refresh(Request())
             renovado = True
         except Exception as e:
+            # Google caduca los permisos a los SIETE DIAS mientras la app
+            # este en modo "Testing". No es un fallo tuyo ni del codigo: es
+            # la politica de Google para aplicaciones sin verificar. Se
+            # vuelve a conceder y listo.
+            caducado = "invalid_grant" in str(e) or "expired" in str(e).lower()
             print(f"[calendario] no se pudo renovar: {e}")
+            if caducado:
+                print(f"[calendario] el permiso ha caducado (Google los caduca a los")
+                print(f"[calendario] 7 dias en modo Testing). Ejecuta: python calendario.py")
             cred = None
 
     if not cred or not cred.valid:

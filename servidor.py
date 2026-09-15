@@ -2100,16 +2100,26 @@ async def ws(sock: WebSocket):
             contacto = correo.buscar_contacto(pedido) if pedido else None
 
             mensaje = (a.get("mensaje") or "").strip()
-            # Aunque se le diga que no, a veces deja "[nombre del usuario]".
-            # Enviarlo con el hueco puesto quedaría fatal, así que se quita.
-            mensaje = re.sub(r"\[[^\]]{2,40}\]", "", mensaje)
-            mensaje = re.sub(r"\s+([,.])", r"\1", mensaje).strip(" ,\n")
             # El modelo a veces describe el encargo en vez de redactarlo:
             # "El usuario pide que mandes un correo electrónico". Eso no es
             # un correo, así que se tira y se pregunta qué decir.
             if re.match(r"(?i)\s*(el|la)\s+usuari[oa]\b", mensaje):
                 print(f"[correo] descarto mensaje {mensaje[:40]!r}: es una descripción")
                 mensaje = ""
+
+            if mensaje:
+                # Lo que saca el router vale, pero sale en un renglón: sin
+                # saludo aparte ni despedida aparte, todo seguido. En Gmail
+                # queda de aviso automático. Se vuelve a redactar a partir
+                # de lo que dijo el usuario, que es la intención de verdad,
+                # y de paso pasa por el reintento y el control de negativas.
+                await enviar(tipo="estado", valor="pensando")
+                t0 = time.monotonic()
+                mensaje = await asyncio.to_thread(
+                    redactar_correo, pregunta,
+                    contacto["nombre"] if contacto else pedido,
+                    (a.get("asunto") or "").strip())
+                print(f"[correo] redactado en {time.monotonic()-t0:.1f}s")
 
             await avanzar_correo({
                 "email": contacto["email"] if contacto else "",
