@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-174_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-190_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -349,14 +349,14 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**174 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**190 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 93 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 122 de los 174 casos**, sin instalar una sola dependencia:
+**En CI corren 122 de los 190 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
-del usuario y el parseo MIME del correo. Los otros 52 necesitan GPU, Ollama
+del usuario y el parseo MIME del correo. Los otros 68 necesitan GPU, Ollama
 y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
 que el runner no puede probar sería peor que no tener CI.
 
@@ -366,6 +366,7 @@ python test_memoria.py    # fechas y horas habladas          (37)
 python test_ventanas.py   # franjas, tramos, fines de semana (32)
 python test_horas.py      # ambigüedad de "a las 8.40"       (20)
 python test_correo.py     # MIME, firmas, citas, fechas      (19)
+python test_conversacion.py  # el turno entero, camino por camino (16)
 python test_movil.py      # audio del navegador desde el móvil (8)
 ```
 

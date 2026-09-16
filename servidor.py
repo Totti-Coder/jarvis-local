@@ -495,272 +495,358 @@ class Conversacion:
                 await self.enviar(tipo="parcial", texto=texto)
 
     async def responder(self, pregunta):
-        """Llama al LLM en streaming y va hablando frase a frase.
+        """Un turno entero. Esto solo decide el camino; cada uno va aparte.
 
-        ollama.chat(stream=True) devuelve un generador SÍNCRONO y bloqueante:
-        cada `next()` espera a la red. Antes se hacía list(...) sobre él dentro
-        de un hilo, lo que consumía la respuesta ENTERA antes de devolver nada
-        al bucle de eventos — de ahí que no hubiera streaming real.
-        Aquí el generador se consume en un hilo aparte, y cada trozo se mete
-        en una asyncio.Queue mediante call_soon_threadsafe (la única forma
-        correcta de tocar una asyncio.Queue desde fuera del hilo del bucle de
-        eventos). El bucle de eventos va sacando trozos de la cola según
-        llegan, así que puede hablar la primera frase sin esperar al resto.
+        El ORDEN importa y es el de siempre:
+
+          1. Si se le acababa de preguntar algo, esto es la respuesta y no
+             pasa por el router: el modelo enrutaria un "si" suelto como
+             charla y se perderia.
+          2. La web y el correo no devuelven una respuesta, sino material
+             que hay que leer. Van al conversador, no vuelven de aqui.
+          3. Lo irreversible (apagar, enviar) se confirma antes de hacerse.
+          4. El resto de herramientas contestan ellas, con texto exacto.
+          5. Y si no hubo herramienta, se conversa.
         """
         await self.enviar(tipo="estado", valor="pensando")
 
-        async def decir_y_cerrar(frase, etiqueta=None):
-            """Dice una frase corta y cierra el turno. Sin pasar por el modelo."""
-            await self.decir_turno(frase, etiqueta, pregunta)
-
-        # ¿Se le acababa de preguntar si apagar o reiniciar? Entonces este
-        # turno es la respuesta, y se resuelve aquí SIN pasar por el router:
-        # el modelo enrutaría un "sí" suelto como charla y se perdería.
         if self.pendiente["tipo"]:
-            tipo, datos = self.pendiente["tipo"], self.pendiente["datos"]
-            self.pendiente["tipo"], self.pendiente["datos"] = None, None
-            dijo_si = es_afirmacion(pregunta)
-
-            if tipo == "sistema":
-                if dijo_si:
-                    print(f"[sistema] confirmado: {datos}")
-                    resultado = await asyncio.to_thread(
-                        sistema.ejecutar_accion, datos)
-                    await decir_y_cerrar(resultado, "control sistema")
-                else:
-                    print(f"[sistema] NO confirmado: {datos} descartado")
-                    verbo = "reinicio" if datos == "reiniciar" else "apago"
-                    await decir_y_cerrar(f"Vale, no {verbo} nada.")
-                return
-
-            # Se le acaba de preguntar el asunto, el texto o a quién: lo
-            # que ha dicho ES la respuesta, no una orden nueva. No pasa
-            # por el router, que enrutaría "que llego tarde a la cena"
-            # como una tarea que apuntar.
-            if tipo == "correo_paso":
-                if pide_dejarlo(pregunta):
-                    print("[correo] abandonado a medias")
-                    await self.enviar(tipo="borrador_cerrar")
-                    await decir_y_cerrar("Vale, lo dejo.", "correo")
-                    return
-                paso = datos.pop("paso", "")
-                dicho = pregunta.strip()
-                if paso == "asunto":
-                    # El asunto es una línea: sin punto final y sin más
-                    datos["asunto"] = dicho.rstrip(" .").strip()
-                elif paso == "mensaje":
-                    # Lo dicho es un ENCARGO, no el texto: "mándale algo
-                    # formal pidiéndole que venga a casa". Lo redacta el
-                    # modelo, y luego se revisa en el popup.
-                    await self.enviar(tipo="estado", valor="pensando")
-                    t0 = time.monotonic()
-                    datos["mensaje"] = await asyncio.to_thread(
-                        redactar_correo, dicho, datos.get("nombre", ""),
-                        datos.get("asunto", ""))
-                    print(f"[correo] redactado en {time.monotonic()-t0:.1f}s")
-                elif paso == "destinatario":
-                    # Contestó hablando en vez de por el popup
-                    destino, visible = self.resolver_destino(dicho)
-                    if not destino:
-                        self.pendiente["tipo"] = "correo_paso"
-                        self.pendiente["datos"] = dict(datos, paso="destinatario")
-                        await decir_y_cerrar(
-                            "No tengo a esa persona en la agenda. "
-                            "Escríbelo en el recuadro.", "correo")
-                        return
-                    datos["email"], datos["nombre"] = destino, visible
-                await self.avanzar_correo(datos, pregunta)
-                return
-
-            if tipo == "correo":
-                if not dijo_si:
-                    print("[correo] NO confirmado: no se envia")
-                    await self.enviar(tipo="borrador_cerrar")
-                    await decir_y_cerrar("Vale, no lo mando.")
-                    return
-                # Decir "sí" manda lo que hay escrito en el borrador. Si le
-                # falta el destinatario no se puede: hay que elegirlo, y eso
-                # se hace en el panel, no hablando.
-                if not datos.get("email"):
-                    self.pendiente["tipo"], self.pendiente["datos"] = "correo", datos
-                    await decir_y_cerrar(
-                        "Antes tienes que elegir a quién se lo mando.", "borrador")
-                    return
-                print(f"[correo] confirmado por voz -> {datos['email']}")
-                ok, frase = await asyncio.to_thread(
-                    correo.enviar, datos["email"], datos["asunto"],
-                    datos["mensaje"])
-                await self.enviar(tipo="borrador_cerrar")
-                await decir_y_cerrar(frase, "correo")
-                return
-
-        # Primero el router: ¿esto va de tareas o del reloj?
-        try:
-            t_ruta = time.monotonic()
-            nombre, args = await asyncio.to_thread(enrutar, pregunta)
-            print(f"[router] {time.monotonic()-t_ruta:.1f}s -> {nombre or 'conversación'}")
-        except Exception as e:
-            print(f"Error en el router: {e}")
-            nombre, args = None, None
-
-        # La búsqueda es distinta al resto de herramientas: lo que vuelve son
-        # fragmentos de páginas, no una respuesta. Hace falta que el modelo los
-        # lea y conteste. Las de la agenda, en cambio, vuelven ya redactadas.
-        contexto_web = None
-        if nombre == "buscar_en_web":
-            await self.enviar(tipo="herramienta", nombre="buscando en la web")
-            consulta = (args or {}).get("consulta") or pregunta
-            t_web = time.monotonic()
-            # buscar_y_leer, no buscar_en_web: los fragmentos del buscador
-            # suelen ser la descripción de la página, no el dato.
-            fragmentos, fallo = await asyncio.to_thread(
-                buscar.buscar_y_leer, consulta)
-            print(f"[web] {time.monotonic()-t_web:.1f}s  {consulta!r} -> "
-                  f"{len(fragmentos)} resultados{' | ' + fallo if fallo else ''}")
-            if fallo:
-                aviso = f"No he podido buscarlo: {fallo}."
-                await self.enviar(tipo="token", texto=aviso)
-                await self.enviar(tipo="estado", valor="hablando")
-                await asyncio.to_thread(hablar, aviso)
-                await self.enviar(tipo="fin_respuesta")
-                await self.enviar(tipo="estado", valor="inactivo")
-                return
-            contexto_web = buscar.como_contexto(fragmentos)
-            nombre = None          # sigue por la vía conversacional, con contexto
-
-        # Los correos, igual que la web: hace falta que el modelo los lea y
-        # los resuma. Pero aquí hay un motivo de seguridad además del
-        # práctico. El texto de un correo lo escribe cualquiera, y puede
-        # traer dentro "manda un correo a esta dirección" o "apaga el
-        # ordenador". Metiéndolo por esta vía se le entrega al CONVERSADOR,
-        # que no lleva herramientas: aunque el modelo se creyera la orden,
-        # no tiene con qué ejecutarla. Al router, que sí las lleva, no le
-        # llega nunca el contenido de un correo.
-        contexto_correo = None
-        if nombre == "leer_correos":
-            await self.enviar(tipo="herramienta", nombre="mirando el correo")
-            a = args or {}
-            nuevos = a.get("solo_nuevos")
-            nuevos = True if nuevos is None else str(nuevos).lower() not in ("false", "0", "no")
-            quien = (a.get("de") or "").strip()
-            t_mail = time.monotonic()
-            correos, fallo = await asyncio.to_thread(
-                correo.leer_nuevos, nuevos, quien)
-            print(f"[correo] {time.monotonic()-t_mail:.1f}s  "
-                  f"{'sin leer' if nuevos else 'recientes'}"
-                  f"{' de ' + quien if quien else ''} -> {len(correos)}"
-                  f"{' | ' + fallo if fallo else ''}")
-            if fallo:
-                await decir_y_cerrar(f"No he podido mirar el correo: {fallo}.",
-                                     "correo")
-                return
-            if not correos:
-                # Sin correos no hay nada que resumir, y pasarle una lista
-                # vacía al modelo es invitarle a inventarse remitentes.
-                if quien:
-                    vacio = f"No tienes ningún correo de {quien}."
-                elif nuevos:
-                    vacio = "No tienes correos nuevos."
-                else:
-                    vacio = "No hay nada en la bandeja de entrada."
-                await decir_y_cerrar(vacio, "correo")
-                return
-            contexto_correo = correo.como_contexto(correos, nuevos)
-            nombre = None
-
-        # Apagar y reiniciar NO se ejecutan a la primera: se pregunta y se
-        # espera respuesta. Es lo único de lo que no se vuelve, así que no
-        # basta con que el router lo proponga bien.
-        if nombre == "control_sistema":
-            accion = (args or {}).get("accion", "")
-            if accion in ("apagar", "reiniciar"):
-                self.pendiente["tipo"], self.pendiente["datos"] = "sistema", accion
-                verbo = "reinicie" if accion == "reiniciar" else "apague"
-                await decir_y_cerrar(f"¿Seguro que quieres que {verbo} el ordenador?",
-                                     "confirmar")
-                return
-
-        # Un correo tampoco se manda a la primera: se lee entero en voz alta
-        # y se espera un "sí". Mandarlo a quien no era no tiene arreglo.
-        if nombre == "enviar_correo":
-            a = args or {}
-            if not correo.cargar_contactos():
-                await decir_y_cerrar(
-                    "No tengo la agenda de contactos preparada todavía.",
-                    "correo")
-                return
-
-            pedido = (a.get("destinatario") or "").strip()
-            # Un destinatario que no salió de la boca del usuario no vale:
-            # a "quiero mandar un correo" el router propuso "su novia",
-            # sacado de los datos guardados. Se ignora y se pregunta.
-            if pedido and destinatario_inventado(pedido, pregunta):
-                print(f"[correo] descarto destinatario {pedido!r}: no lo dijo")
-                pedido = ""
-            contacto = correo.buscar_contacto(pedido) if pedido else None
-
-            mensaje = (a.get("mensaje") or "").strip()
-            # El modelo a veces describe el encargo en vez de redactarlo:
-            # "El usuario pide que mandes un correo electrónico". Eso no es
-            # un correo, así que se tira y se pregunta qué decir.
-            if re.match(r"(?i)\s*(el|la)\s+usuari[oa]\b", mensaje):
-                print(f"[correo] descarto mensaje {mensaje[:40]!r}: es una descripción")
-                mensaje = ""
-
-            if mensaje:
-                # Lo que saca el router vale, pero sale en un renglón: sin
-                # saludo aparte ni despedida aparte, todo seguido. En Gmail
-                # queda de aviso automático. Se vuelve a redactar a partir
-                # de lo que dijo el usuario, que es la intención de verdad,
-                # y de paso pasa por el reintento y el control de negativas.
-                await self.enviar(tipo="estado", valor="pensando")
-                t0 = time.monotonic()
-                mensaje = await asyncio.to_thread(
-                    redactar_correo, pregunta,
-                    contacto["nombre"] if contacto else pedido,
-                    (a.get("asunto") or "").strip())
-                print(f"[correo] redactado en {time.monotonic()-t0:.1f}s")
-
-            await self.avanzar_correo({
-                "email": contacto["email"] if contacto else "",
-                "nombre": contacto["nombre"] if contacto else "",
-                "asunto": (a.get("asunto") or "").strip(),
-                "mensaje": mensaje,
-            }, pregunta)
+            await self._resolver_pendiente(pregunta)
             return
 
-        if nombre:
-            resultado = await asyncio.to_thread(ejecutar, nombre, args)
-            if resultado:
-                # La respuesta de una herramienta ya viene redactada y es
-                # exacta. No se la pasa al modelo para que la reformule:
-                # se diría igual de bien y podría cambiar una hora o una fecha.
-                await self.enviar(tipo="herramienta", nombre=nombre)
-                await self.enviar(tipo="token", texto=resultado)
-                await self.enviar(tipo="estado", valor="hablando")
-                await asyncio.to_thread(hablar, resultado)
-                self.historial.append({"role": "user", "content": pregunta})
-                self.historial.append({"role": "assistant", "content": resultado})
-                recortar_historial(self.historial)
-                await self.enviar(tipo="fin_respuesta")
-                await self.enviar(tipo="estado", valor="inactivo")
-                return
-            # Si la herramienta falla, se sigue como conversación normal
+        nombre, args = await self._enrutar(pregunta)
 
+        material = None
+        if nombre == "buscar_en_web":
+            material = await self._material_de_la_web(args, pregunta)
+            if material is None:
+                return                      # ya se le ha contestado
+            nombre = None                   # sigue por la via conversacional
+        elif nombre == "leer_correos":
+            material = await self._material_del_correo(args, pregunta)
+            if material is None:
+                return
+            nombre = None
+
+        if nombre == "control_sistema":
+            if await self._confirmar_accion(args, pregunta):
+                return
+        elif nombre == "enviar_correo":
+            await self._preparar_correo(args, pregunta)
+            return
+
+        if nombre and await self._contestar_con_herramienta(nombre, args, pregunta):
+            return
+
+        await self._conversar(pregunta, material)
+
+    async def _enrutar(self, pregunta):
+        """¿Hace falta una herramienta? (None, None) si es charla."""
+        try:
+            t0 = time.monotonic()
+            nombre, args = await asyncio.to_thread(enrutar, pregunta)
+            print(f"[router] {time.monotonic()-t0:.1f}s -> "
+                  f"{nombre or 'conversación'}")
+            return nombre, args
+        except Exception as e:
+            print(f"Error en el router: {e}")
+            return None, None
+
+    # ---------------------------------------------------------------
+    # 1. LO QUE SE LE ACABABA DE PREGUNTAR
+    # ---------------------------------------------------------------
+
+    async def _resolver_pendiente(self, pregunta):
+        """Este turno contesta a una pregunta de Jarvis, no es una orden nueva."""
+        tipo, datos = self.pendiente["tipo"], self.pendiente["datos"]
+        self.pendiente["tipo"], self.pendiente["datos"] = None, None
+
+        if tipo == "sistema":
+            await self._confirmar_apagado(datos, pregunta)
+        elif tipo == "correo_paso":
+            await self._seguir_correo(datos, pregunta)
+        elif tipo == "correo":
+            await self._confirmar_envio(datos, pregunta)
+
+    async def _confirmar_apagado(self, accion, pregunta):
+        if es_afirmacion(pregunta):
+            print(f"[sistema] confirmado: {accion}")
+            resultado = await asyncio.to_thread(sistema.ejecutar_accion, accion)
+            await self.decir_turno(resultado, "control sistema", pregunta)
+            return
+        print(f"[sistema] NO confirmado: {accion} descartado")
+        verbo = "reinicio" if accion == "reiniciar" else "apago"
+        await self.decir_turno(f"Vale, no {verbo} nada.", None, pregunta)
+
+    async def _seguir_correo(self, datos, pregunta):
+        """Rellena el hueco que se estaba preguntando y sigue con el siguiente.
+
+        Lo dicho ES la respuesta, no una orden: no pasa por el router, que
+        enrutaria "que llego tarde a la cena" como una tarea que apuntar.
+        """
+        if pide_dejarlo(pregunta):
+            print("[correo] abandonado a medias")
+            await self.enviar(tipo="borrador_cerrar")
+            await self.decir_turno("Vale, lo dejo.", "correo", pregunta)
+            return
+
+        paso = datos.pop("paso", "")
+        dicho = pregunta.strip()
+
+        if paso == "asunto":
+            # El asunto es una línea: sin punto final y sin más
+            datos["asunto"] = dicho.rstrip(" .").strip()
+
+        elif paso == "mensaje":
+            # Lo dicho es un ENCARGO, no el texto: "mándale algo formal
+            # pidiéndole que venga a casa". Lo redacta el modelo, y luego
+            # se revisa en el popup.
+            await self.enviar(tipo="estado", valor="pensando")
+            t0 = time.monotonic()
+            datos["mensaje"] = await asyncio.to_thread(
+                redactar_correo, dicho, datos.get("nombre", ""),
+                datos.get("asunto", ""))
+            print(f"[correo] redactado en {time.monotonic()-t0:.1f}s")
+
+        elif paso == "destinatario":
+            # Contestó hablando en vez de por el popup
+            destino, visible = self.resolver_destino(dicho)
+            if not destino:
+                self.pendiente["tipo"] = "correo_paso"
+                self.pendiente["datos"] = dict(datos, paso="destinatario")
+                await self.decir_turno(
+                    "No tengo a esa persona en la agenda. "
+                    "Escríbelo en el recuadro.", "correo", pregunta)
+                return
+            datos["email"], datos["nombre"] = destino, visible
+
+        await self.avanzar_correo(datos, pregunta)
+
+    async def _confirmar_envio(self, datos, pregunta):
+        if not es_afirmacion(pregunta):
+            print("[correo] NO confirmado: no se envia")
+            await self.enviar(tipo="borrador_cerrar")
+            await self.decir_turno("Vale, no lo mando.", None, pregunta)
+            return
+
+        # Decir "sí" manda lo que hay escrito en el borrador. Si le falta el
+        # destinatario no se puede: hay que elegirlo, y eso se hace en el
+        # panel, no hablando.
+        if not datos.get("email"):
+            self.pendiente["tipo"], self.pendiente["datos"] = "correo", datos
+            await self.decir_turno(
+                "Antes tienes que elegir a quién se lo mando.", "borrador",
+                pregunta)
+            return
+
+        print(f"[correo] confirmado por voz -> {datos['email']}")
+        ok, frase = await asyncio.to_thread(
+            correo.enviar, datos["email"], datos["asunto"], datos["mensaje"])
+        await self.enviar(tipo="borrador_cerrar")
+        await self.decir_turno(frase, "correo", pregunta)
+
+    # ---------------------------------------------------------------
+    # 2. MATERIAL QUE HAY QUE LEER, NO RESPUESTAS
+    # ---------------------------------------------------------------
+
+    async def _material_de_la_web(self, args, pregunta):
+        """Busca y devuelve lo leido. None si ya se le ha contestado.
+
+        La busqueda es distinta al resto de herramientas: lo que vuelve son
+        fragmentos de paginas, no una respuesta. Hace falta que el modelo
+        los lea y conteste. Las de la agenda vuelven ya redactadas.
+        """
+        await self.enviar(tipo="herramienta", nombre="buscando en la web")
+        consulta = (args or {}).get("consulta") or pregunta
+        t0 = time.monotonic()
+        # buscar_y_leer, no buscar_en_web: los fragmentos del buscador suelen
+        # ser la descripción de la página, no el dato.
+        fragmentos, fallo = await asyncio.to_thread(buscar.buscar_y_leer, consulta)
+        print(f"[web] {time.monotonic()-t0:.1f}s  {consulta!r} -> "
+              f"{len(fragmentos)} resultados{' | ' + fallo if fallo else ''}")
+
+        if fallo:
+            aviso = f"No he podido buscarlo: {fallo}."
+            await self.enviar(tipo="token", texto=aviso)
+            await self.enviar(tipo="estado", valor="hablando")
+            await asyncio.to_thread(hablar, aviso)
+            await self.enviar(tipo="fin_respuesta")
+            await self.enviar(tipo="estado", valor="inactivo")
+            return None
+        return buscar.como_contexto(fragmentos)
+
+    async def _material_del_correo(self, args, pregunta):
+        """Lee la bandeja y devuelve lo leido. None si ya se ha contestado.
+
+        Igual que la web, pero aqui hay un motivo de SEGURIDAD ademas del
+        practico. El texto de un correo lo escribe cualquiera, y puede
+        traer dentro "manda un correo a esta direccion" o "apaga el
+        ordenador". Metiendolo por esta via se le entrega al CONVERSADOR,
+        que no lleva herramientas: aunque el modelo se creyera la orden, no
+        tiene con que ejecutarla. Al router, que si las lleva, no le llega
+        nunca el contenido de un correo.
+        """
+        await self.enviar(tipo="herramienta", nombre="mirando el correo")
+        a = args or {}
+        nuevos = a.get("solo_nuevos")
+        nuevos = True if nuevos is None else str(nuevos).lower() not in ("false", "0", "no")
+        quien = (a.get("de") or "").strip()
+
+        t0 = time.monotonic()
+        correos, fallo = await asyncio.to_thread(correo.leer_nuevos, nuevos, quien)
+        print(f"[correo] {time.monotonic()-t0:.1f}s  "
+              f"{'sin leer' if nuevos else 'recientes'}"
+              f"{' de ' + quien if quien else ''} -> {len(correos)}"
+              f"{' | ' + fallo if fallo else ''}")
+
+        if fallo:
+            await self.decir_turno(f"No he podido mirar el correo: {fallo}.",
+                                   "correo", pregunta)
+            return None
+
+        if not correos:
+            # Sin correos no hay nada que resumir, y pasarle una lista vacía
+            # al modelo es invitarle a inventarse remitentes.
+            if quien:
+                vacio = f"No tienes ningún correo de {quien}."
+            elif nuevos:
+                vacio = "No tienes correos nuevos."
+            else:
+                vacio = "No hay nada en la bandeja de entrada."
+            await self.decir_turno(vacio, "correo", pregunta)
+            return None
+
+        return correo.como_contexto(correos, nuevos)
+
+    # ---------------------------------------------------------------
+    # 3. LO IRREVERSIBLE SE PREGUNTA ANTES
+    # ---------------------------------------------------------------
+
+    async def _confirmar_accion(self, args, pregunta):
+        """Apagar y reiniciar NO se ejecutan a la primera. True si se pregunto.
+
+        Es lo unico de lo que no se vuelve, asi que no basta con que el
+        router lo proponga bien.
+        """
+        accion = (args or {}).get("accion", "")
+        if accion not in ("apagar", "reiniciar"):
+            return False
+        self.pendiente["tipo"], self.pendiente["datos"] = "sistema", accion
+        verbo = "reinicie" if accion == "reiniciar" else "apague"
+        await self.decir_turno(f"¿Seguro que quieres que {verbo} el ordenador?",
+                               "confirmar", pregunta)
+        return True
+
+    async def _preparar_correo(self, args, pregunta):
+        """Monta el borrador y lo abre para revisarlo. Nunca envia aqui.
+
+        Mandarlo a quien no era no tiene arreglo, asi que siempre pasa por
+        el popup antes.
+        """
+        a = args or {}
+        if not correo.cargar_contactos():
+            await self.decir_turno(
+                "No tengo la agenda de contactos preparada todavía.",
+                "correo", pregunta)
+            return
+
+        pedido = (a.get("destinatario") or "").strip()
+        # Un destinatario que no salió de la boca del usuario no vale: a
+        # "quiero mandar un correo" el router propuso "su novia", sacado de
+        # los datos guardados. Se ignora y se pregunta.
+        if pedido and destinatario_inventado(pedido, pregunta):
+            print(f"[correo] descarto destinatario {pedido!r}: no lo dijo")
+            pedido = ""
+        contacto = correo.buscar_contacto(pedido) if pedido else None
+
+        mensaje = (a.get("mensaje") or "").strip()
+        # El modelo a veces describe el encargo en vez de redactarlo: "El
+        # usuario pide que mandes un correo electrónico". Eso no es un
+        # correo, así que se tira y se pregunta qué decir.
+        if re.match(r"(?i)\s*(el|la)\s+usuari[oa]\b", mensaje):
+            print(f"[correo] descarto mensaje {mensaje[:40]!r}: es una descripción")
+            mensaje = ""
+
+        if mensaje:
+            # Lo que saca el router vale, pero sale en un renglón: sin saludo
+            # aparte ni despedida aparte, todo seguido. En Gmail queda de
+            # aviso automático. Se vuelve a redactar a partir de lo que dijo
+            # el usuario, que es la intención de verdad, y de paso pasa por
+            # el reintento y el control de negativas.
+            await self.enviar(tipo="estado", valor="pensando")
+            t0 = time.monotonic()
+            mensaje = await asyncio.to_thread(
+                redactar_correo, pregunta,
+                contacto["nombre"] if contacto else pedido,
+                (a.get("asunto") or "").strip())
+            print(f"[correo] redactado en {time.monotonic()-t0:.1f}s")
+
+        await self.avanzar_correo({
+            "email": contacto["email"] if contacto else "",
+            "nombre": contacto["nombre"] if contacto else "",
+            "asunto": (a.get("asunto") or "").strip(),
+            "mensaje": mensaje,
+        }, pregunta)
+
+    # ---------------------------------------------------------------
+    # 4. HERRAMIENTAS QUE CONTESTAN ELLAS
+    # ---------------------------------------------------------------
+
+    async def _contestar_con_herramienta(self, nombre, args, pregunta):
+        """Ejecuta y lee el resultado TAL CUAL. False si no devolvio nada.
+
+        Lo que devuelve una herramienta ya viene redactado y es exacto. No
+        se le pasa al modelo para que lo reformule: se diria igual de bien y
+        podria cambiar una hora o una fecha por el camino.
+        """
+        resultado = await asyncio.to_thread(ejecutar, nombre, args)
+        if not resultado:
+            return False              # si falla, se sigue como conversación
+
+        await self.enviar(tipo="herramienta", nombre=nombre)
+        await self.enviar(tipo="token", texto=resultado)
+        await self.enviar(tipo="estado", valor="hablando")
+        await asyncio.to_thread(hablar, resultado)
+        self.historial.append({"role": "user", "content": pregunta})
+        self.historial.append({"role": "assistant", "content": resultado})
+        recortar_historial(self.historial)
+        await self.enviar(tipo="fin_respuesta")
+        await self.enviar(tipo="estado", valor="inactivo")
+        return True
+
+    # ---------------------------------------------------------------
+    # 5. CONVERSAR
+    # ---------------------------------------------------------------
+
+    async def _conversar(self, pregunta, material=None):
+        """Llama al LLM en streaming y va hablando frase a frase.
+
+        ollama.chat(stream=True) devuelve un generador SINCRONO y
+        bloqueante: cada next() espera a la red. Antes se hacia list(...)
+        sobre el dentro de un hilo, lo que consumia la respuesta ENTERA
+        antes de devolver nada al bucle de eventos — de ahi que no hubiera
+        streaming real.
+
+        Aqui el generador se consume en un hilo aparte, y cada trozo se
+        mete en una asyncio.Queue con call_soon_threadsafe (la unica forma
+        correcta de tocar una asyncio.Queue desde fuera del hilo del bucle).
+        El bucle va sacando trozos segun llegan, asi que puede hablar la
+        primera frase sin esperar al resto.
+        """
         # La fecha se refresca cada turno: el asistente puede llevar horas
         # abierto y haber cruzado la medianoche.
         self.historial[0] = {"role": "system", "content": prompt_con_fecha()}
 
-        material = contexto_web or contexto_correo
         if material:
             # El material va en el turno del usuario, no en el prompt de
             # sistema: así se va solo cuando el historial se recorta y no
             # contamina las preguntas siguientes. Que un correo leído hace
             # diez turnos siga influyendo sería un problema, no una ventaja.
             self.historial.append({"role": "user",
-                              "content": f"{material}\n\nPREGUNTA: {pregunta}"})
+                                   "content": f"{material}\n\nPREGUNTA: {pregunta}"})
         else:
             self.historial.append({"role": "user", "content": pregunta})
+
         completa = ""
         buffer_frase = ""
         primera = True
@@ -817,13 +903,14 @@ class Conversacion:
                 buffer_frase = ""
 
         if error:
-            # Un fallo de Ollama (modelo no descargado, servicio caído, etc.)
-            # ya no debe tumbar la conexión entera: se avisa a la interfaz,
-            # se quita del historial la pregunta que quedó sin responder,
-            # y se vuelve a inactivo para poder seguir usando el asistente.
+            # Un fallo de Ollama (modelo no descargado, servicio caído...) ya
+            # no debe tumbar la conexión entera: se avisa a la interfaz, se
+            # quita del historial la pregunta que quedó sin responder, y se
+            # vuelve a inactivo para poder seguir usando el asistente.
             print(f"Error al hablar con Ollama: {error}")
             self.historial.pop()
-            await self.enviar(tipo="error", texto="No he podido pensar la respuesta.")
+            await self.enviar(tipo="error",
+                              texto="No he podido pensar la respuesta.")
             await self.enviar(tipo="estado", valor="inactivo")
             return
 
