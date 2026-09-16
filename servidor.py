@@ -534,6 +534,9 @@ class Conversacion:
         elif nombre == "enviar_correo":
             await self._preparar_correo(args, pregunta)
             return
+        elif nombre == "completar_tarea":
+            if await self._confirmar_borrado(args, pregunta):
+                return
 
         if nombre and await self._contestar_con_herramienta(nombre, args, pregunta):
             return
@@ -563,6 +566,8 @@ class Conversacion:
 
         if tipo == "sistema":
             await self._confirmar_apagado(datos, pregunta)
+        elif tipo == "borrado":
+            await self._quitar_grupo(datos, pregunta)
         elif tipo == "correo_paso":
             await self._seguir_correo(datos, pregunta)
         elif tipo == "correo":
@@ -577,6 +582,19 @@ class Conversacion:
         print(f"[sistema] NO confirmado: {accion} descartado")
         verbo = "reinicio" if accion == "reiniciar" else "apago"
         await self.decir_turno(f"Vale, no {verbo} nada.", None, pregunta)
+
+    async def _quitar_grupo(self, grupo, pregunta):
+        """Ya ha dicho si quiere que se quiten las tareas del grupo."""
+        if not es_afirmacion(pregunta):
+            print(f"[agenda] NO confirmado: no se quita nada ({grupo})")
+            await self.decir_turno("Vale, las dejo.", "agenda", pregunta)
+            return
+        # Se vuelven a buscar AHORA, no se guardaron antes: entre la
+        # pregunta y el "si" el usuario ha podido apuntar otra cosa.
+        filas = await asyncio.to_thread(memoria.tareas_del_grupo, grupo)
+        print(f"[agenda] confirmado: quito {len(filas)} ({grupo})")
+        resultado = await asyncio.to_thread(memoria.completar_varias, filas)
+        await self.decir_turno(resultado, "completar tarea", pregunta)
 
     async def _seguir_correo(self, datos, pregunta):
         """Rellena el hueco que se estaba preguntando y sigue con el siguiente.
@@ -735,6 +753,31 @@ class Conversacion:
         verbo = "reinicie" if accion == "reiniciar" else "apague"
         await self.decir_turno(f"¿Seguro que quieres que {verbo} el ordenador?",
                                "confirmar", pregunta)
+        return True
+
+    async def _confirmar_borrado(self, args, pregunta):
+        """Quitar VARIAS tareas se pregunta antes. True si se pregunto.
+
+        Una sola se quita sin mas: si te equivocas, la vuelves a apuntar.
+        Pero "quitalo todo" borra la lista entera, y eso no se deshace
+        hablando. Con Whisper de por medio, una frase mal oida no puede
+        vaciarte la agenda.
+        """
+        texto = (args or {}).get("texto", "")
+        grupo = memoria.grupo_pedido(texto)
+        if not grupo:
+            return False                  # nombra una concreta: sin ceremonia
+
+        cuantas = memoria.tareas_del_grupo(grupo)
+        if len(cuantas) <= 1:
+            return False                  # una o ninguna: tampoco hace falta
+
+        self.pendiente["tipo"] = "borrado"
+        self.pendiente["datos"] = grupo
+        nombres = "; ".join(f["texto"] for f in cuantas[:4])
+        await self.decir_turno(
+            f"Eso son {len(cuantas)} tareas: {nombres}. ¿Las quito todas?",
+            "confirmar", pregunta)
         return True
 
     async def _preparar_correo(self, args, pregunta):

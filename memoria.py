@@ -647,8 +647,87 @@ def listar_tareas(cuando="", texto="", ahora=None):
     return texto
 
 
-def completar_tarea(texto):
-    """Marca como hecha la tarea que más se parezca a lo que dijo el usuario."""
+def grupo_pedido(texto):
+    """¿Se refiere a un CONJUNTO de tareas en vez de a una concreta?
+
+    "quita las dos atrasadas" no nombra ninguna tarea: nombra un grupo.
+    Buscando por parecido de palabras no encontraba nada —las tareas se
+    llaman "examen de economia", no "atrasada"— y contestaba "no
+    encuentro esa tarea", que era verdad y no servía de nada.
+
+    Devuelve "atrasadas", "hoy", "todas" o "" si habla de una concreta.
+    """
+    t = _sin_tildes(texto or "")
+    if re.search(r"\batrasad|\bvencid|\bpasad[ao]s\b|\bcaducad", t):
+        return "atrasadas"
+    if re.search(r"\bde hoy\b|\bhoy\b", t):
+        return "hoy"
+    # "todo" y "todas" son el grupo entero. Ojo: tambien cae aqui "esas
+    # dos tareas que tenia pendientes", que es lo mismo dicho largo.
+    if re.search(r"\btod[oa]s?\b|\bla lista\b|\btodas mis tareas\b", t):
+        return "todas"
+    if re.search(r"\bes[ao]s\b.*\b(tareas|cosas)\b|\blas? (dos|tres|cuatro)\b", t):
+        return "todas"
+    return ""
+
+
+def tareas_del_grupo(grupo, ahora=None):
+    """Las tareas pendientes que caen en ese grupo."""
+    ahora = ahora or datetime.now()
+    with _conectar() as con:
+        filas = con.execute(
+            "SELECT * FROM tareas WHERE hecha = 0 ORDER BY cuando_iso"
+        ).fetchall()
+
+    if grupo == "todas":
+        return list(filas)
+    salida = []
+    for f in filas:
+        if not f["cuando_iso"]:
+            continue                 # sin fecha no esta ni atrasada ni es de hoy
+        cuando = datetime.fromisoformat(f["cuando_iso"])
+        if grupo == "atrasadas" and cuando < ahora:
+            salida.append(f)
+        elif grupo == "hoy" and cuando.date() == ahora.date():
+            salida.append(f)
+    return salida
+
+
+def completar_varias(filas):
+    """Marca como hechas todas esas, y las quita del calendario."""
+    if not filas:
+        return "No hay ninguna que quitar."
+    ids = [f["id"] for f in filas]
+    with _conectar() as con:
+        con.execute(
+            f"UPDATE tareas SET hecha = 1 WHERE id IN ({','.join('?' * len(ids))})",
+            ids)
+
+    for f in filas:
+        if f["evento_id"]:
+            try:
+                import calendario
+                calendario.borrar_evento(f["evento_id"])
+            except Exception as e:
+                print(f"[calendar] no se pudo borrar el evento: {e}")
+
+    if len(filas) == 1:
+        return f"Hecho, quito {filas[0]['texto']} de la lista."
+    nombres = "; ".join(f["texto"] for f in filas)
+    return f"Hecho, quito {len(filas)} de la lista: {nombres}."
+
+
+def completar_tarea(texto, ahora=None):
+    """Marca como hecha la tarea que más se parezca a lo que dijo el usuario.
+
+    Si en vez de una tarea nombra un grupo ("las atrasadas", "todas"),
+    las quita todas. Esa vía pasa antes por una confirmación en el
+    servidor: borrar la lista entera de una frase mal oída sería feo.
+    """
+    grupo = grupo_pedido(texto)
+    if grupo:
+        return completar_varias(tareas_del_grupo(grupo, ahora))
+
     busca = set(_sin_tildes(texto).split())
     with _conectar() as con:
         filas = con.execute("SELECT * FROM tareas WHERE hecha = 0").fetchall()

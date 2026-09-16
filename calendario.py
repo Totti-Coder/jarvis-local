@@ -78,6 +78,10 @@ def config_oauth():
 # Solo se pide permiso para crear y ver eventos, no para borrar el calendario
 PERMISOS = ["https://www.googleapis.com/auth/calendar.events"]
 
+# Etiqueta oculta que se pone a todo evento creado desde aqui, para
+# poder encontrarlos luego sin tocar los que has creado tu a mano.
+MARCA = "jarvis"
+
 ZONA = "Europe/Madrid"
 DURACION_MIN = 60          # cuánto dura un evento si no se dice otra cosa
 
@@ -217,6 +221,12 @@ def crear_evento(texto, cuando_iso, tiene_hora):
                 "end": {"date": (inicio.date() + timedelta(days=1)).isoformat()},
             }
 
+        # Marca de la casa. Sin esto no hay forma de distinguir un evento
+        # que creo Jarvis de uno tuyo, y eso hace imposible limpiar con
+        # seguridad: borrar por nombre podria llevarse tu dentista de
+        # verdad. Google la guarda oculta, no se ve en la interfaz.
+        cuerpo["extendedProperties"] = {"private": {"origen": MARCA}}
+
         ev = servicio.events().insert(calendarId="primary", body=cuerpo).execute()
         return ev.get("id")
     except Exception as e:
@@ -278,3 +288,33 @@ if __name__ == "__main__":
             print("Borrado." if borrar_evento(ident) else "No se pudo borrar.")
     else:
         print("El permiso está bien, pero no se pudo crear el evento.")
+
+
+def listar_eventos(desde, hasta, maximo=250):
+    """Los eventos del calendario entre dos fechas. Lista vacia si falla."""
+    servicio = conectar()
+    if not servicio:
+        return []
+    try:
+        r = servicio.events().list(
+            calendarId="primary",
+            timeMin=desde.isoformat() + "Z",
+            timeMax=hasta.isoformat() + "Z",
+            singleEvents=True, orderBy="startTime",
+            maxResults=max(1, min(int(maximo), 2500)),
+        ).execute()
+        return r.get("items", [])
+    except Exception as e:
+        print(f"[calendar] no se pudieron listar los eventos: {e}")
+        return []
+
+
+def es_de_jarvis(evento):
+    """¿Lo creo Jarvis? Solo cuenta la marca, nunca el nombre.
+
+    Emparejar por nombre borraria tu dentista de verdad junto con el de
+    las pruebas. Si no hay marca, se deja en paz: los eventos anteriores
+    a que existiera la marca hay que repasarlos a mano.
+    """
+    props = (evento.get("extendedProperties") or {}).get("private") or {}
+    return props.get("origen") == MARCA

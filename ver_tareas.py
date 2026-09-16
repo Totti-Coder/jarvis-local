@@ -29,6 +29,24 @@ if borrar:
     if input("Escribe BORRAR para confirmar: ").strip() != "BORRAR":
         print("Cancelado, no se ha tocado nada.")
         sys.exit(0)
+
+    # Primero el calendario, y LUEGO la base de datos. El orden importa:
+    # el evento_id solo existe en SQLite, asi que borrando la fila primero
+    # se pierde la unica forma de encontrar el evento. Paso de verdad, y
+    # dejo 45 eventos huerfanos en el calendario que Jarvis ya no podia
+    # quitar porque, para el, esas tareas no existian.
+    with memoria._conectar() as con:
+        eventos = [f["evento_id"] for f in
+                   con.execute("SELECT evento_id FROM tareas "
+                               "WHERE evento_id IS NOT NULL").fetchall()]
+    if eventos:
+        import calendario
+        print(f"Quitando {len(eventos)} eventos del calendario...")
+        quitados = sum(bool(calendario.borrar_evento(e)) for e in eventos)
+        print(f"  {quitados} de {len(eventos)} borrados del calendario")
+        if quitados < len(eventos):
+            print("  (los que fallaron ya no estaban, o no hay permiso)")
+
     with memoria._conectar() as con:
         con.execute("DELETE FROM tareas")
     print(f"Borradas {n} tareas.")
