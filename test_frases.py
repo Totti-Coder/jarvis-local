@@ -8,7 +8,7 @@ Uso:  python test_frases.py
 import sys
 
 sys.stdout.reconfigure(encoding="utf-8")
-import servidor
+import redactor, router, voz
 
 fallos = 0
 
@@ -43,7 +43,7 @@ for texto, esperado in CASOS:
     trozos = []
     for c in texto:
         buf += c
-        if servidor.frase_terminada(buf):
+        if voz.frase_terminada(buf):
             trozos.append(buf.strip())
             buf = ""
     if buf.strip():
@@ -75,7 +75,7 @@ INVENTADOS = [
     ("",         "Quiero mandar un correo",                             False),
 ]
 for destinatario, dicho, esperado in INVENTADOS:
-    r = servidor.destinatario_inventado(destinatario, dicho)
+    r = router.destinatario_inventado(destinatario, dicho)
     ok = r == esperado
     fallos += not ok
     print(f"  {'OK ' if ok else 'MAL'} {destinatario!r:<12} en {dicho[:44]!r}"
@@ -95,7 +95,7 @@ DEJARLO = [
     ("no puedo ir", False),
 ]
 for frase, esperado in DEJARLO:
-    r = servidor.pide_dejarlo(frase)
+    r = router.pide_dejarlo(frase)
     ok = r == esperado
     fallos += not ok
     print(f"  {'OK ' if ok else 'MAL'} {frase!r:<32} -> {r}"
@@ -122,7 +122,7 @@ RECHAZOS = [
     ("Hola Ana,\n\nLlego tarde.\n\nUn abrazo,\nPablo",                 False),
 ]
 for texto, esperado in RECHAZOS:
-    r = servidor.parece_rechazo(texto)
+    r = redactor.parece_rechazo(texto)
     ok = r == esperado
     fallos += not ok
     print(f"  {'OK ' if ok else 'MAL'} {r!s:<5} {texto[:52]!r}")
@@ -139,7 +139,7 @@ LIMPIEZA = [
     ("Un abrazo,\n[nombre del usuario]",                "Un abrazo"),
 ]
 for entra, esperado in LIMPIEZA:
-    r = servidor.limpiar_correo(entra)
+    r = redactor.limpiar_correo(entra)
     ok = r == esperado
     fallos += not ok
     print(f"  {'OK ' if ok else 'MAL'} {entra[:44]!r}")

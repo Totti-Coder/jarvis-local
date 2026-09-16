@@ -12,7 +12,7 @@ import sys
 from collections import Counter
 
 sys.stdout.reconfigure(encoding="utf-8")
-import servidor
+import ajustes, router
 
 # (frase, herramienta esperada, categoría)
 # None = debe contestar conversando, sin tocar ninguna herramienta.
@@ -145,12 +145,12 @@ total_categoria = Counter()
 fallos = []
 
 print("=" * 74)
-print(f"EVALUACIÓN DEL ROUTER   ({len(CASOS)} frases, modelo {servidor.MODELO_LLM})")
+print(f"EVALUACIÓN DEL ROUTER   ({len(CASOS)} frases, modelo {ajustes.MODELO_LLM})")
 print("=" * 74)
 
 for frase, esperada, cat in CASOS:
     try:
-        obtenida, args = servidor.enrutar(frase)
+        obtenida, args = router.enrutar(frase)
     except Exception as e:
         obtenida, args = f"ERROR:{type(e).__name__}", {}
 

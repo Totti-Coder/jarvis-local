@@ -23,7 +23,7 @@ import threading
 import time
 
 sys.stdout.reconfigure(encoding="utf-8")
-import servidor
+import ajustes, voz
 
 CON_SONIDO = "--sonido" in sys.argv
 
@@ -31,7 +31,7 @@ CON_SONIDO = "--sonido" in sys.argv
 class Altavoz:
     """Altavoz de mentira: se traga el audio en tiempo real, sin ruido.
 
-    Imita lo justo de sounddevice que usa servidor.hablar(): play(),
+    Imita lo justo de sounddevice que usa voz.hablar(): play(),
     get_stream().active y stop(). Así el corte a media frase se sigue
     midiendo de verdad.
     """
@@ -55,9 +55,9 @@ class Altavoz:
 
 if not CON_SONIDO:
     _falso = Altavoz()
-    servidor.sd.play = _falso.play
-    servidor.sd.get_stream = _falso.get_stream
-    servidor.sd.stop = _falso.stop
+    voz.sd.play = _falso.play
+    voz.sd.get_stream = _falso.get_stream
+    voz.sd.stop = _falso.stop
 
 fallos = 0
 
@@ -74,7 +74,7 @@ print("=" * 66)
 # Los números tienen que sonar como palabras, no saltarse
 from piper import PiperVoice
 
-voz = PiperVoice.load(str(servidor.AQUI_VOCES / f"{servidor.VOZ_PIPER}.onnx"))
+motor_piper = PiperVoice.load(str(ajustes.AQUI_VOCES / f"{ajustes.VOZ_PIPER}.onnx"))
 CIFRAS = [
     ("a las 5 de la tarde",   "θˈinko"),        # cinco
     ("Son las 20 y 21",       "βˈeɪnte"),       # veinte
@@ -82,7 +82,7 @@ CIFRAS = [
     ("el 31 de agosto",       "tɾˌeɪntaiʲˈuno"),  # treintaiuno
 ]
 for texto, esperado in CIFRAS:
-    fonemas = "".join("".join(c.phonemes) for c in voz.synthesize(texto))
+    fonemas = "".join("".join(c.phonemes) for c in motor_piper.synthesize(texto))
     comprobar(f"{texto!r}", esperado in fonemas, f"-> {fonemas[:60]}")
 
 print()
@@ -95,24 +95,24 @@ print("=" * 66)
 suenan = 0
 for i in range(4):
     t0 = time.time()
-    servidor.hablar(f"Frase número {i + 1}, con unos cuantos segundos de duración.")
+    voz.hablar(f"Frase número {i + 1}, con unos cuantos segundos de duración.")
     suenan += (time.time() - t0) > 1.5
 comprobar("cuatro frases seguidas suenan", suenan == 4, f"{suenan}/4")
 
 # Interrupción a media frase
-servidor.permitir_voz()
-threading.Thread(target=lambda: (time.sleep(1.0), servidor.cortar_voz()),
+voz.permitir_voz()
+threading.Thread(target=lambda: (time.sleep(1.0), voz.cortar_voz()),
                  daemon=True).start()
 t0 = time.time()
-servidor.hablar("Esta frase es muy larga y tendría que cortarse mucho antes "
+voz.hablar("Esta frase es muy larga y tendría que cortarse mucho antes "
                 "de llegar al final si la interrupción funciona bien.")
 corte = time.time() - t0
 comprobar("se corta al interrumpir", corte < 2.0, f"{corte:.1f}s")
 
 # Y sigue funcionando después
-servidor.permitir_voz()
+voz.permitir_voz()
 t0 = time.time()
-servidor.hablar("Ya puedo hablar otra vez sin ningún problema.")
+voz.hablar("Ya puedo hablar otra vez sin ningún problema.")
 despues = time.time() - t0
 comprobar("vuelve a hablar tras el corte", despues > 1.5, f"{despues:.1f}s")
 

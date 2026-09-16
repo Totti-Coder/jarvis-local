@@ -24,7 +24,7 @@ import sys
 import numpy as np
 
 sys.stdout.reconfigure(encoding="utf-8")
-import servidor
+import ajustes, audio, escucha
 
 fallos = []
 
@@ -43,24 +43,24 @@ print("=" * 70)
 # ---- mismo interfaz que el del PC ------------------------------------
 # Si a Microfono le sale un metodo nuevo y aqui no, el movil se rompe en
 # silencio: el VAD o el espectro llamarian a algo que no existe.
-faltan = (set(dir(servidor.Microfono)) - set(dir(object))
-          - (set(dir(servidor.MicrofonoRemoto)) - set(dir(object))))
+faltan = (set(dir(audio.Microfono)) - set(dir(object))
+          - (set(dir(audio.MicrofonoRemoto)) - set(dir(object))))
 comprueba("no le falta ningun metodo del microfono del PC", not faltan,
           str(sorted(faltan)) if faltan else "")
 
 # ---- alimentar y recuperar -------------------------------------------
-m = servidor.MicrofonoRemoto()
+m = audio.MicrofonoRemoto()
 m.empezar()
 t = np.linspace(0, 1, 16000, endpoint=False)
 tono = (np.sin(2 * np.pi * 440 * t) * 0.3 * 32767).astype(np.int16)
 for i in range(0, len(tono), 1024):
     m.alimentar(tono[i:i + 1024].tobytes())
 
-audio = m.audio()
-comprueba("sale 1 segundo de audio", len(audio) == 16000, f"{len(audio)} muestras")
+muestras = m.audio()
+comprueba("sale 1 segundo de audio", len(muestras) == 16000, f"{len(muestras)} muestras")
 comprueba("en float32 normalizado",
-          audio.dtype == np.float32 and abs(audio).max() <= 1.0,
-          f"{audio.dtype}, pico {abs(audio).max():.2f}")
+          muestras.dtype == np.float32 and abs(muestras).max() <= 1.0,
+          f"{muestras.dtype}, pico {abs(muestras).max():.2f}")
 comprueba("el nivel sube al hablar", m.nivel > 0.5, f"{m.nivel:.2f}")
 comprueba("el espectro tiene 32 bandas", len(m.espectro()) == 32)
 comprueba("audio_reciente recorta", len(m.audio_reciente(0.5)) == 8000)
@@ -79,7 +79,7 @@ print("=" * 70)
 
 from piper import PiperVoice
 
-_voz = PiperVoice.load(str(servidor.AQUI_VOCES / f"{servidor.VOZ_PIPER}.onnx"))
+_voz = PiperVoice.load(str(ajustes.AQUI_VOCES / f"{ajustes.VOZ_PIPER}.onnx"))
 
 
 def como_del_navegador(frase):
@@ -98,7 +98,7 @@ def como_del_navegador(frase):
         bajado[i] = x[desde:hasta].mean() if hasta > desde else 0.0
     pcm = (np.clip(bajado, -1, 1) * 32767).astype(np.int16)
 
-    remoto = servidor.MicrofonoRemoto()
+    remoto = audio.MicrofonoRemoto()
     remoto.empezar()
     for i in range(0, len(pcm), 1024):
         remoto.alimentar(pcm[i:i + 1024].tobytes())
@@ -128,16 +128,16 @@ class ModeloEspia:
 
 
 largo = 16000
-servidor.transcribir(np.zeros(largo, dtype=np.float32), ModeloEspia())
-esperado = largo + 2 * int(servidor.COLCHON_S * servidor.FRECUENCIA)
-comprueba(f"pega {servidor.COLCHON_S}s de silencio a cada lado",
+escucha.transcribir(np.zeros(largo, dtype=np.float32), ModeloEspia())
+esperado = largo + 2 * int(escucha.COLCHON_S * ajustes.FRECUENCIA)
+comprueba(f"pega {escucha.COLCHON_S}s de silencio a cada lado",
           recibido.get("muestras") == esperado,
           f"{recibido.get('muestras')} muestras, esperaba {esperado}")
 
 # Y esto es solo para mirarlo: la precision de Whisper no decide nada aqui
 print("\n  (informativo: qué oye Whisper por esta ruta)")
 for frase in FRASES:
-    oido = servidor.transcribir(como_del_navegador(frase), servidor.stt_bueno)
+    oido = escucha.transcribir(como_del_navegador(frase), escucha.stt_bueno)
     primera = sin_adornos(frase).split()[0]
     marca = "   " if primera in sin_adornos(oido) else " ~ "
     print(f"  {marca}{frase!r:<38} -> {oido!r}")

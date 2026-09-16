@@ -16,7 +16,7 @@ import time
 sys.stdout.reconfigure(encoding="utf-8")
 
 import numpy as np
-import servidor
+import ajustes, escucha, voz
 
 CON_SONIDO = "--sonido" in sys.argv
 
@@ -43,9 +43,9 @@ class Altavoz:
 
 if not CON_SONIDO:
     _mudo = Altavoz()
-    servidor.sd.play = _mudo.play
-    servidor.sd.get_stream = _mudo.get_stream
-    servidor.sd.stop = _mudo.stop
+    voz.sd.play = _mudo.play
+    voz.sd.get_stream = _mudo.get_stream
+    voz.sd.stop = _mudo.stop
 
 
 def paso(titulo):
@@ -81,7 +81,7 @@ print(f"audio generado: {len(audio)/16000:.1f}s   frase: {FRASE!r}")
 
 paso("2. Transcribir con el modelo bueno")
 t0 = time.time()
-texto = servidor.transcribir(audio, servidor.stt_bueno, "final")
+texto = escucha.transcribir(audio, escucha.stt_bueno, "final")
 print(f"transcrito en {time.time()-t0:.1f}s -> {texto!r}")
 if not texto:
     print("FALLO: Whisper no devolvió nada")
@@ -90,12 +90,12 @@ if not texto:
 paso("3. Preguntar al LLM")
 import ollama
 
-historial = [{"role": "system", "content": servidor.PROMPT_SISTEMA},
+historial = [{"role": "system", "content": ajustes.PROMPT_SISTEMA},
              {"role": "user", "content": texto}]
 t0 = time.time()
 primer = None
 respuesta = ""
-flujo = ollama.chat(model=servidor.MODELO_LLM, messages=historial,
+flujo = ollama.chat(model=ajustes.MODELO_LLM, messages=historial,
                     stream=True, options={"num_ctx": 2048, "temperature": 0.8})
 for parte in flujo:
     c = parte["message"]["content"]
@@ -119,7 +119,7 @@ print("PROBLEMAS:", problemas if problemas else "ninguno")
 
 paso("5. Leerla en voz alta" + ("" if CON_SONIDO else "  (en silencio)"))
 t0 = time.time()
-servidor.hablar(respuesta)
+voz.hablar(respuesta)
 print(f"hablado en {time.time()-t0:.1f}s")
 
 print("\n=== CADENA COMPLETA OK ===")

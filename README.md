@@ -422,7 +422,13 @@ en esa wifi puede usarlo.
 ## 📁 Estructura
 
 ```
-servidor.py     FastAPI · WebSocket · router · 12 herramientas · voz
+ajustes.py      Constantes: modelo, voz, umbrales. Todo en un sitio
+servidor.py     FastAPI + la clase Conversacion (una por pestaña)
+router.py       12 herramientas y ~12 guardas deterministas
+redactor.py     Redacción de correos y detección de negativas
+escucha.py      Whisper: cargar y transcribir
+voz.py          Piper, cola de voz, troceado de frases
+audio.py        Micrófono del PC y del navegador, mismo interfaz
 memoria.py      SQLite + intérprete de fechas en español
 sistema.py      Control del PC: lista blanca, Steam, atajos
 correo.py       Gmail: leer, resumir, redactar, enviar
