@@ -586,6 +586,56 @@ PALABRAS_VACIAS = {"el", "la", "los", "las", "un", "una", "de", "del", "a",
                    "que", "mi", "mis", "lo", "al", "y", "o", "para", "con"}
 
 
+# Otras agendas que se suman a la lista: Google Calendar. La pone el
+# servidor al arrancar. Aqui se queda en None a proposito, para que los
+# tests saquen la lista SOLO de SQLite y den siempre lo mismo: si leyeran
+# tu calendario de verdad, pasarian o no segun lo que tuvieras esa semana.
+# Es la misma idea que el parametro `ahora`: lo que cambia solo se inyecta.
+fuente_externa = None      # funcion (desde, hasta) -> [ {texto, cuando_iso, ...} ]
+
+# Sin ventana ("¿que tengo pendiente?") solo se mira hacia delante. Hacia
+# atras hay decenas de eventos huerfanos de las pruebas, y leerlos todos
+# convertiria la respuesta en una lista de dentistas de hace dos semanas.
+DIAS_EXTERNOS = 30
+
+
+def _de_fuera(desde, hasta, ahora):
+    """Lo que hay en Google Calendar y NO esta ya en la lista propia.
+
+    Tres cosas se quitan, las tres por duplicado:
+      - eventos que creo Jarvis (llevan su evento_id en SQLite): ya salen
+        como tarea propia, contarlos otra vez los diria dos veces.
+      - eventos con la marca de Jarvis: son copias de tareas propias.
+      - repetidos exactos, mismo nombre a la misma hora. Las pruebas
+        dejaron el mismo "dentista" veinte veces.
+    """
+    if fuente_externa is None:
+        return []
+    if desde is None:
+        desde, hasta = ahora, ahora + timedelta(days=DIAS_EXTERNOS)
+    try:
+        eventos = fuente_externa(desde, hasta)
+    except Exception as e:
+        print(f"[agenda] no se pudo leer el calendario: {e}")
+        return []
+
+    with _conectar() as con:
+        conocidos = {f["evento_id"] for f in con.execute(
+            "SELECT evento_id FROM tareas WHERE evento_id IS NOT NULL")}
+
+    vistos, salida = set(), []
+    for ev in eventos:
+        if ev.get("id") in conocidos or ev.get("marcado"):
+            continue
+        clave = (_sin_tildes(ev["texto"]), ev["cuando_iso"])
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        salida.append({"texto": ev["texto"], "cuando_iso": ev["cuando_iso"],
+                       "tiene_hora": ev["tiene_hora"]})
+    return salida
+
+
 def listar_tareas(cuando="", texto="", ahora=None):
     """Qué hay pendiente. Se puede filtrar por momento, por nombre, o los dos.
 
@@ -595,10 +645,16 @@ def listar_tareas(cuando="", texto="", ahora=None):
     """
     ahora = ahora or datetime.now()
     with _conectar() as con:
-        filas = con.execute(
+        propias = con.execute(
             "SELECT * FROM tareas WHERE hecha = 0 ORDER BY"
             " cuando_iso IS NULL, cuando_iso"
         ).fetchall()
+    filas = [{"texto": f["texto"], "cuando_iso": f["cuando_iso"],
+              "tiene_hora": f["tiene_hora"]} for f in propias]
+
+    desde, hasta = interpretar_ventana(cuando, ahora)
+    filas += _de_fuera(desde, hasta, ahora)
+    filas.sort(key=lambda f: (f["cuando_iso"] is None, f["cuando_iso"] or ""))
 
     # Filtro por nombre: se comparan palabras con contenido, ignorando
     # artículos y preposiciones ("el test de mates" casa con "test mates")
@@ -615,7 +671,6 @@ def listar_tareas(cuando="", texto="", ahora=None):
                 nombre = texto.strip()
                 return f"No tienes nada apuntado sobre {nombre}."
 
-    desde, hasta = interpretar_ventana(cuando, ahora)
     if desde:
         filas = [f for f in filas if f["cuando_iso"]
                  and desde <= datetime.fromisoformat(f["cuando_iso"]) <= hasta]
@@ -785,6 +840,14 @@ def resumen_del_dia(ahora=None):
             atrasadas.append(f)
         elif d.date() == ahora.date():
             hoy.append(f)
+
+    # Lo de hoy que solo esta en Google Calendar tambien cuenta. Solo lo de
+    # HOY: lo atrasado de fuera no se suma, porque ahi viven los huerfanos
+    # de las pruebas y el saludo acabaria diciendo "tienes 45 cosas
+    # atrasadas" cada manana.
+    inicio_dia = datetime.combine(ahora.date(), datetime.min.time())
+    hoy += _de_fuera(inicio_dia, inicio_dia + timedelta(days=1, seconds=-1), ahora)
+    hoy.sort(key=lambda f: f["cuando_iso"] or "")
 
     partes = []
     if hoy:

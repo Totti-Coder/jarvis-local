@@ -52,3 +52,6 @@ jobs:
 
       - name: Correo — MIME, firmas, citas, fechas
         run: python test_correo.py
+
+      - name: Agenda propia + Google Calendar, sin repetir
+        run: python test_agenda_externa.py

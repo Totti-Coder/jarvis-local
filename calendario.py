@@ -397,3 +397,54 @@ def como_frase(ev):
         except Exception:
             cuando += f" a las {d.hour}"
     return f"{titulo}, {cuando}"
+
+
+def como_tarea(ev):
+    """Un evento de Google con la misma forma que una fila de la agenda.
+
+    Google da las horas con zona ("2026-09-01T09:00:00+02:00") y SQLite
+    las guarda en hora local sin zona. Se pasa todo a hora local sin zona
+    para poder mezclarlas y compararlas: comparar una con zona y otra sin
+    ella revienta en Python, y convertir a mano la zona se equivoca en el
+    cambio de hora.
+    """
+    from datetime import datetime
+    inicio = ev.get("start", {})
+    if inicio.get("dateTime"):
+        d = datetime.fromisoformat(inicio["dateTime"].replace("Z", "+00:00"))
+        cuando = d.astimezone().replace(tzinfo=None)
+        tiene_hora = True
+    elif inicio.get("date"):
+        cuando = datetime.fromisoformat(inicio["date"])
+        tiene_hora = False
+    else:
+        return None
+    return {
+        "texto": (ev.get("summary") or "(sin título)").strip(),
+        "cuando_iso": cuando.isoformat(),
+        "tiene_hora": tiene_hora,
+        "id": ev.get("id"),
+        "marcado": es_de_jarvis(ev),
+    }
+
+
+def eventos_para_agenda(desde, hasta):
+    """Eventos entre dos momentos en hora LOCAL, ya con forma de tarea.
+
+    listar_eventos habla con Google en UTC; aqui se traduce, que el resto
+    del programa piensa en hora local. Nunca lanza: sin calendario, lista
+    vacia y la agenda sigue saliendo de SQLite como siempre.
+    """
+    from datetime import timezone
+    try:
+        a = desde.astimezone(timezone.utc).replace(tzinfo=None)
+        b = hasta.astimezone(timezone.utc).replace(tzinfo=None)
+        salida = []
+        for ev in listar_eventos(a, b):
+            t = como_tarea(ev)
+            if t:
+                salida.append(t)
+        return salida
+    except Exception as e:
+        print(f"[calendar] no se pudo leer la agenda: {e}")
+        return []

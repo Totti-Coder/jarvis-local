@@ -49,6 +49,11 @@ from voz import (cortar_voz, frase_terminada, hablar, permitir_voz,
 AQUI = Path(__file__).parent
 
 memoria.preparar()
+# La agenda tambien lee Google Calendar. Se engancha aqui, en el servidor,
+# y no dentro de memoria: asi los tests de memoria siguen sacando la lista
+# solo de SQLite y dan lo mismo tengas lo que tengas en tu calendario.
+if calendario.disponible():
+    memoria.fuente_externa = calendario.eventos_para_agenda
 print("Listo.")
 print(f"  {calendario.estado()}")
 print(f"  {correo.estado()}")
