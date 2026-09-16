@@ -1,0 +1,54 @@
+# Ejecuta la parte de la suite que no necesita GPU ni modelos.
+#
+# QUE CORRE Y QUE NO
+#
+# Un runner de GitHub no tiene GPU, ni Ollama, ni los 4,7 GB del modelo de
+# lenguaje, ni los 137 MB de la voz. Asi que aqui corre la logica pura:
+# el interprete de fechas en espanol, las franjas horarias, el resumen
+# diario, los datos del usuario y el parseo MIME del correo.
+#
+# Son 122 de los 174 casos, y ninguno necesita instalar una sola
+# dependencia: los modulos que tocan son stdlib, y los imports de Google
+# estan dentro de las funciones a proposito.
+#
+# Lo que queda fuera (voz, router, cadena completa, audio del movil) se
+# ejecuta en local con `python eval_router.py` y los demas test_*.py.
+# Prometer aqui lo que el runner no puede probar seria peor que no tener CI.
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:        # para poder lanzarlo a mano desde la web
+
+jobs:
+  logica:
+    name: Lógica sin GPU
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Fechas y horas habladas
+        run: python test_memoria.py
+
+      - name: Ambigüedad de "a las 8.40"
+        run: python test_horas.py
+
+      - name: Franjas, tramos y fines de semana
+        run: python test_ventanas.py
+
+      - name: Persistencia y resumen del día
+        run: python test_resumen.py
+
+      - name: Datos personales del usuario
+        run: python test_datos.py
+
+      - name: Correo — MIME, firmas, citas, fechas
+        run: python test_correo.py

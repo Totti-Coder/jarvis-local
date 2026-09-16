@@ -6,6 +6,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Totti-Coder/jarvis-local/actions/workflows/tests.yml">
+    <img alt="Tests" src="https://github.com/Totti-Coder/jarvis-local/actions/workflows/tests.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="Licencia" src="https://img.shields.io/badge/licencia-MIT-blue"></a>
+</p>
+
+<p align="center">
   <img alt="Latencia" src="https://img.shields.io/badge/voz→respuesta-~0.8s-2ea44f?style=for-the-badge">
   <img alt="APIs de pago" src="https://img.shields.io/badge/API_keys-0-2ea44f?style=for-the-badge">
   <img alt="Offline" src="https://img.shields.io/badge/offline--first-100%25-2ea44f?style=for-the-badge">
@@ -348,6 +354,12 @@ fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **ev
 suite del router con 93 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
+**En CI corren 122 de los 174 casos**, sin instalar una sola dependencia:
+el intérprete de fechas, las franjas horarias, el resumen diario, los datos
+del usuario y el parseo MIME del correo. Los otros 52 necesitan GPU, Ollama
+y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
+que el runner no puede probar sería peor que no tener CI.
+
 ```bash
 python eval_router.py     # 93 frases · acierto por categoría · % global
 python test_memoria.py    # fechas y horas habladas          (37)
@@ -507,9 +519,7 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
 
 ## 📄 Licencia
 
-> [!NOTE]
-> Añade tu licencia. [MIT](https://choosealicense.com/licenses/mit/) es lo
-> habitual para un proyecto así.
+[MIT](LICENSE). Úsalo, cámbialo y publícalo como quieras.
 
 <p align="center">
   <sub>Construido con modelos que caben en una GPU de escritorio.</sub>
