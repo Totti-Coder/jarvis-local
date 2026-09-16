@@ -99,7 +99,7 @@ medición, no de una intuición.
   **rompe la conversación**: contestaba *"no tengo una función específica para
   contar chistes"*. Tres intentos de arreglarlo por prompt fracasaron. Se
   resolvió por arquitectura: **dos llamadas al LLM con personalidades
-  distintas**, y el conversador no ve una herramienta jamás. Resultado: **93/93
+  distintas**, y el conversador no ve una herramienta jamás. Resultado: **97/97
   frases enrutadas** y conversación intacta.
 
 - **🛡️ Deterministic Guardrails — *el modelo propone, el código dispone*** —
