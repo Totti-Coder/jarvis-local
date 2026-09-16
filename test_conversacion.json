@@ -568,5 +568,161 @@
    "estado",
    "inactivo"
   ]
+ ],
+ "fecha_pregunta": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "confirmar"
+  ],
+  [
+   "token",
+   "El 1 de septiembre hay 3 cosas: dentista, 2 veces; comprar pan. ¿Las quito todas?"
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "fecha_con_todo": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "confirmar"
+  ],
+  [
+   "token",
+   "El 1 de septiembre hay 3 cosas: dentista, 2 veces; comprar pan. ¿Las quito todas?"
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "fecha_con_nombre": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "confirmar"
+  ],
+  [
+   "token",
+   "El 1 de septiembre hay 2 cosas: dentista, 2 veces. ¿Las quito todas?"
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "fecha_vacia": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "agenda"
+  ],
+  [
+   "token",
+   "No tienes nada el 25 de septiembre."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "fecha_si": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "completar tarea"
+  ],
+  [
+   "token",
+   "Hecho, he quitado 2."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "fecha_no": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "agenda"
+  ],
+  [
+   "token",
+   "Vale, lo dejo."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
  ]
 }

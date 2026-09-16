@@ -53,7 +53,9 @@ def reiniciar():
     with memoria._conectar() as con:
         con.execute("DELETE FROM tareas")
         con.execute("DELETE FROM avisos")
-    memoria.fuente_externa = None
+    # Las tres, no solo la lectura: importar el servidor engancha tu Google
+    # de verdad, y un test no puede escribir en tu calendario
+    memoria.fuente_externa = memoria.crear_externo = memoria.borrar_externo = None
     memoria._cache_fuera.update(cuando=None, hasta=None, eventos=[])
 
 
@@ -147,6 +149,8 @@ print("EL VIGILANTE")
 print("=" * 70)
 
 import servidor  # noqa: E402  (carga Whisper: va despues de lo rapido)
+
+memoria.fuente_externa = memoria.crear_externo = memoria.borrar_externo = None
 
 servidor.AVISO_CADA_S = 0.01
 servidor.hablar = lambda t: None

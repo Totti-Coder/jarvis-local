@@ -15,7 +15,7 @@
   <img alt="Latencia" src="https://img.shields.io/badge/voz→respuesta-~0.8s-2ea44f?style=for-the-badge">
   <img alt="APIs de pago" src="https://img.shields.io/badge/API_keys-0-2ea44f?style=for-the-badge">
   <img alt="Offline" src="https://img.shields.io/badge/offline--first-100%25-2ea44f?style=for-the-badge">
-  <img alt="Router" src="https://img.shields.io/badge/router_eval-93%2F93-2ea44f?style=for-the-badge">
+  <img alt="Router" src="https://img.shields.io/badge/router_eval-97%2F97-2ea44f?style=for-the-badge">
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-242_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-283_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -173,6 +173,7 @@ mover Whisper a CPU.
 - Franjas: *"mañana por la tarde"*
 - Tramos: *"entre las 2 y las 5"*
 - *"el fin de semana"* = vie+sáb+dom
+- Borra por fecha: *"quita lo del 1 de septiembre"*
 - Lee y escribe tu Google Calendar
 - Te resume el día al entrar
 - **Te avisa 10 min antes**, sin preguntar
@@ -350,19 +351,19 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**242 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**283 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 93 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 143 de los 242 casos**, sin instalar una sola dependencia:
+**En CI corren 182 de los 283 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
-del usuario y el parseo MIME del correo. Los otros 99 necesitan GPU, Ollama
+del usuario y el parseo MIME del correo. Los otros 101 necesitan GPU, Ollama
 y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
 que el runner no puede probar sería peor que no tener CI.
 
 ```bash
-python eval_router.py     # 93 frases · acierto por categoría · % global
+python eval_router.py     # 97 frases · acierto por categoría · % global
 python test_memoria.py    # fechas y horas habladas          (37)
 python test_ventanas.py   # franjas, tramos, fines de semana (32)
 python test_horas.py      # ambigüedad de "a las 8.40"       (20)

@@ -33,7 +33,22 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-import servidor
+# Base de datos propia, ANTES de importar el servidor (que la prepara al
+# cargar). Antes estos escenarios leian tu agenda real: si apuntabas un
+# "dentista" de verdad, el test cambiaba de resultado sin que nadie hubiera
+# tocado el codigo.
+import memoria  # noqa: E402
+
+memoria.BASE = Path(__file__).parent / "_test_conversacion.db"
+if memoria.BASE.exists():
+    memoria.BASE.unlink()
+
+import servidor  # noqa: E402
+
+# Y el servidor, al importarse, engancha tu Google Calendar de verdad. Aqui
+# se desengancha: un test no puede escribir en tu calendario. Ya paso, y
+# dejo doscientos eventos de prueba en el calendario real.
+memoria.fuente_externa = memoria.crear_externo = memoria.borrar_externo = None
 
 AQUI = Path(__file__).parent
 GUARDADO = AQUI / "test_conversacion.json"
@@ -112,7 +127,21 @@ ESCENARIOS = [
     ("calendario_no",       "no",                           (None, None), ("borrado_calendario", ["e1", "e2"])),
     # Ni en la lista ni en el calendario: contesta la herramienta de siempre
     ("no_esta_en_ningun_sitio", "Quita lo del gimnasio",    ("completar_tarea", {"texto": "gimnasio"}), None),
+    # Borrar por FECHA. El reloj esta fijo en el 16 de septiembre de 2026
+    ("fecha_pregunta",      "Quita lo del 1 de septiembre", ("completar_tarea", {"texto": "lo del 1 de septiembre"}), None),
+    # "todo" no puede ganarle a la fecha: seria vaciar la agenda entera
+    ("fecha_con_todo",      "Borra todo lo que tenía el 1 de septiembre", ("completar_tarea", {"texto": "todo lo que tenia"}), None),
+    ("fecha_con_nombre",    "Quita el dentista del 1 de septiembre", ("completar_tarea", {"texto": "el dentista"}), None),
+    ("fecha_vacia",         "Quita lo del 25 de septiembre", ("completar_tarea", {"texto": "lo del 25"}), None),
+    ("fecha_si",            "sí",                           (None, None), ("borrado_dia", None)),
+    ("fecha_no",            "no",                           (None, None), ("borrado_dia", None)),
 ]
+
+# El reloj de los escenarios. Sin fijarlo, "el 1 de septiembre" seria de
+# 2026 o de 2027 segun el dia en que se ejecutara el test.
+from datetime import datetime  # noqa: E402
+
+AHORA_FIJO = datetime(2026, 9, 16, 17, 0)
 
 # Calendario de mentira, con los duplicados que dejaron las pruebas
 EVENTOS_FALSOS = [
@@ -164,6 +193,18 @@ async def un_turno(escenario):
     servidor.calendario.borrar_evento = lambda i: True
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
+    conv.ahora = lambda: AHORA_FIJO
+
+    def agenda_falsa(desde, hasta):
+        salida = []
+        for ev in EVENTOS_FALSOS:
+            t = servidor.calendario.como_tarea(ev)
+            if desde <= datetime.fromisoformat(t["cuando_iso"]) <= hasta:
+                salida.append(t)
+        return salida
+
+    servidor.calendario.eventos_para_agenda = agenda_falsa
+    servidor.calendario.borrar_varios = lambda ids: len(ids)
 
     # El conversador: se devuelve un chorro fijo, troceado como el de verdad
     def chat_falso(**k):
@@ -184,6 +225,9 @@ async def un_turno(escenario):
                 "asunto": "", "mensaje": "", "paso": datos}}
         elif tipo == "borrado_calendario":
             conv.pendiente = {"tipo": "borrado_calendario", "datos": datos}
+        elif tipo == "borrado_dia":
+            conv.pendiente = {"tipo": "borrado_dia",
+                              "datos": {"propias": [], "fuera": ["e1", "e2"]}}
         elif tipo == "correo":
             conv.pendiente = {"tipo": "correo", "datos": {
                 "email": "ana@ejemplo.com", "nombre": "Ana",

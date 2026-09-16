@@ -884,6 +884,138 @@ def completar_varias(filas):
     return f"Hecho, quito {len(filas)} de la lista: {nombres}."
 
 
+# ---------------------------------------------------------------
+# BORRAR POR FECHA: "quita lo del 1 de septiembre"
+# ---------------------------------------------------------------
+
+# Lo que acompaña a la fecha y no dice NADA de qué tarea es. Si tras
+# quitarlo no queda nada, se habla del día entero; si queda algo
+# ("dentista"), solo de eso ese día.
+_RELLENO_BORRAR = {
+    "quita", "quitame", "quitalo", "quitala", "quitalas", "quitalos",
+    "borra", "borrame", "borralo", "borrala", "borralas", "borralos",
+    "elimina", "eliminame", "eliminalo", "eliminala", "eliminalas",
+    "cancela", "cancelame", "cancelalo", "anula", "saca",
+    "quiero", "que", "puedes", "podrias", "me", "te", "se", "por", "favor",
+    "lo", "la", "los", "las", "el", "un", "una", "unos", "unas",
+    "de", "del", "a", "al", "en", "para", "y", "mi", "mis", "tu", "tus",
+    "todo", "toda", "todos", "todas", "cosa", "cosas", "tarea", "tareas",
+    "evento", "eventos", "cita", "citas", "plan", "planes", "agenda",
+    "calendario", "google", "lista", "dia", "fecha",
+    "tenia", "tengo", "tenemos", "habia", "hay", "apuntado", "apuntada",
+    "apuntados", "apuntadas", "pendiente", "pendientes", "puesto",
+    "hoy", "ayer", "anteayer", "manana", "pasado", "este", "esta",
+}
+
+
+def _dia_con_mes(t, ahora):
+    """"el 1 de septiembre" -> la fecha MAS CERCANA con ese dia y mes.
+
+    Para apuntar, una fecha pasada se entiende del año siguiente (nadie
+    apunta en el pasado). Para borrar no: "lo del 1 de septiembre" dicho
+    el 16 de septiembre es de hace quince dias, no del año que viene.
+    Se elige la ocurrencia mas proxima a hoy, hacia delante o hacia atras.
+    """
+    m = re.search(r"\b(\d{1,2})\s+de\s+([a-z]+)", t)
+    if not m:
+        return None
+    num = int(m.group(1))
+    for i, mes in enumerate(MESES_ES, start=1):
+        if _sin_tildes(mes).startswith(m.group(2)[:4]):
+            candidatos = []
+            for anio in (ahora.year - 1, ahora.year, ahora.year + 1):
+                try:
+                    candidatos.append(ahora.date().replace(year=anio, month=i, day=num))
+                except ValueError:
+                    pass
+            if not candidatos:
+                return None
+            return min(candidatos, key=lambda d: abs((d - ahora.date()).days))
+    return None
+
+
+def borrado_por_fecha(texto, ahora=None):
+    """¿Pide quitar lo de un DIA concreto? (desde, hasta, palabras) o None.
+
+    `palabras` son las que quedan tras quitar la fecha y el relleno: vacio
+    si habla del dia entero ("lo del 1 de septiembre"), o el nombre de lo
+    que quiere quitar ese dia ("el dentista del 1 de septiembre").
+    """
+    ahora = ahora or datetime.now()
+    t = _sin_tildes(texto or "")
+    franja = _franja_de(t)
+    # La franja se quita antes de buscar el dia: en "mañana por la mañana"
+    # el segundo "mañana" es la hora, y taparía al primero, que es el dia.
+    sin_franja = re.sub(r"\b(?:por la|de la|esta)\s+(?:manana|tarde|noche|madrugada)\b"
+                        r"|\bmediodia\b", " ", t)
+
+    dia = _dia_con_mes(t, ahora)
+    if dia is None:
+        if re.search(r"\banteayer\b", sin_franja):
+            dia = ahora.date() - timedelta(days=2)
+        elif re.search(r"\bayer\b", sin_franja):
+            dia = ahora.date() - timedelta(days=1)
+        elif re.search(r"\bpasado manana\b", sin_franja):
+            dia = ahora.date() + timedelta(days=2)
+        elif re.search(r"\bmanana\b", sin_franja):
+            dia = ahora.date() + timedelta(days=1)
+        elif re.search(r"\bhoy\b", sin_franja) or re.search(
+                r"\besta\s+(?:manana|tarde|noche|madrugada)\b", t):
+            dia = ahora.date()            # "esta tarde" tambien es hoy
+    if dia is None:
+        return None
+
+    # Lo que queda: sin la fecha, sin la franja, sin meses y sin relleno
+    resto = re.sub(r"\b\d{1,2}\s+de\s+[a-z]+", " ", sin_franja)
+    palabras = {p for p in re.findall(r"[a-z]{3,}", resto)
+                if p not in _RELLENO_BORRAR
+                and not any(_sin_tildes(m).startswith(p[:4]) for m in MESES_ES)}
+
+    desde = datetime.combine(dia, datetime.min.time())
+    hasta = desde + timedelta(days=1, seconds=-1)
+    # "lo de mañana por la tarde" no es el dia entero: sin estrechar,
+    # se llevaria tambien lo de la mañana
+    if franja:
+        desde = desde.replace(hour=franja[0])
+        hasta = desde.replace(hour=franja[1] - 1, minute=59, second=59)
+    return desde, hasta, palabras
+
+
+def coincide_nombre(titulo, palabras):
+    """¿El titulo contiene alguna de esas palabras? Sin palabras, todo vale."""
+    if not palabras:
+        return True
+    return bool(palabras & set(re.findall(r"[a-z]{3,}", _sin_tildes(titulo or ""))))
+
+
+def tareas_del_dia(desde, hasta, palabras=()):
+    """Tareas pendientes propias de ese dia (y con ese nombre, si se dio)."""
+    salida = []
+    with _conectar() as con:
+        for f in con.execute("SELECT * FROM tareas WHERE hecha = 0 "
+                             "AND cuando_iso IS NOT NULL ORDER BY cuando_iso"):
+            if desde <= datetime.fromisoformat(f["cuando_iso"]) <= hasta \
+                    and coincide_nombre(f["texto"], set(palabras)):
+                salida.append(f)
+    return salida
+
+
+def tareas_por_ids(ids):
+    if not ids:
+        return []
+    with _conectar() as con:
+        return con.execute(
+            f"SELECT * FROM tareas WHERE hecha = 0 AND id IN ({','.join('?' * len(ids))})",
+            list(ids)).fetchall()
+
+
+def eventos_conocidos():
+    """Ids de Google que ya estan ligados a una tarea propia."""
+    with _conectar() as con:
+        return {f["evento_id"] for f in con.execute(
+            "SELECT evento_id FROM tareas WHERE evento_id IS NOT NULL")}
+
+
 def buscar_tarea(texto):
     """La tarea pendiente que más se parezca, sin tocar nada. None si no hay.
 

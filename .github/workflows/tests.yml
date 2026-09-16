@@ -55,3 +55,6 @@ jobs:
 
       - name: Agenda propia + Google Calendar, sin repetir
         run: python test_agenda_externa.py
+
+      - name: Borrar por fecha, sin llevarse la agenda entera
+        run: python test_borrar_fecha.py

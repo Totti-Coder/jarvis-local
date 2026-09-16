@@ -19,6 +19,8 @@ import struct
 import sys
 import threading
 import time
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -143,6 +145,10 @@ class Conversacion:
 
         self.tarea_avisos = None
         self.estado = "inactivo"
+        # El reloj se inyecta, como en memoria: "lo del 1 de septiembre" es
+        # de este año o del siguiente segun el dia en que se diga, y un test
+        # que dependa del calendario de verdad cambia solo de resultado.
+        self.ahora = datetime.now
 
         # Se fija en correr(), que es cuando hay bucle de asyncio
         self.bucle_principal = None
@@ -569,6 +575,11 @@ class Conversacion:
             await self._preparar_correo(args, pregunta)
             return
         elif nombre == "completar_tarea":
+            # La fecha va antes que los grupos: "borra todo lo que tenia el
+            # 31 de agosto" contiene "todo", y sin este orden se entendia
+            # como "borra todo" y proponia vaciar la agenda entera.
+            if await self._confirmar_borrado_por_fecha(pregunta):
+                return
             if await self._confirmar_borrado(args, pregunta):
                 return
             if await self._buscar_en_el_calendario(args, pregunta):
@@ -606,6 +617,8 @@ class Conversacion:
             await self._quitar_grupo(datos, pregunta)
         elif tipo == "borrado_calendario":
             await self._quitar_del_calendario(datos, pregunta)
+        elif tipo == "borrado_dia":
+            await self._quitar_del_dia(datos, pregunta)
         elif tipo == "correo_paso":
             await self._seguir_correo(datos, pregunta)
         elif tipo == "correo":
@@ -817,6 +830,98 @@ class Conversacion:
             f"Eso son {len(cuantas)} tareas: {nombres}. ¿Las quito todas?",
             "confirmar", pregunta)
         return True
+
+    @staticmethod
+    def _dia_hablado(momento, ahora):
+        """"el 1 de septiembre", o "hoy"/"mañana"/"ayer" si toca."""
+        dias = (momento.date() - ahora.date()).days
+        if dias == 0:
+            return "hoy"
+        if dias == 1:
+            return "mañana"
+        if dias == -1:
+            return "ayer"
+        return f"el {momento.day} de {memoria.MESES_ES[momento.month - 1]}"
+
+    async def _confirmar_borrado_por_fecha(self, pregunta):
+        """"Quita lo del 1 de septiembre": lo de ese dia, aqui y en Google.
+
+        SIEMPRE pregunta, aunque sea una cosa: por fecha se abarca mas de
+        lo que parece, y en Google puede haber cosas tuyas de ese dia que
+        Jarvis no creo. Se dice que hay antes, agrupado por nombre, para
+        que el "si" sea sabiendo a que.
+
+        Se mira la frase original y no lo que extrajo el router: la fecha
+        es lo que importa aqui, y el modelo a veces la recorta.
+        """
+        ahora = self.ahora()
+        pedido = memoria.borrado_por_fecha(pregunta, ahora)
+        if not pedido:
+            return False
+        desde, hasta, palabras = pedido
+
+        propias = await asyncio.to_thread(memoria.tareas_del_dia,
+                                          desde, hasta, palabras)
+        # Lo de Google que no este ya ligado a una tarea propia: esas se
+        # borran de alli al completarlas, y contarlas seria decirlas dos veces
+        conocidos = await asyncio.to_thread(memoria.eventos_conocidos)
+        eventos = await asyncio.to_thread(calendario.eventos_para_agenda,
+                                          desde, hasta)
+        fuera = [e for e in eventos
+                 if e["id"] not in conocidos
+                 and memoria.coincide_nombre(e["texto"], palabras)]
+
+        dia = self._dia_hablado(desde, ahora)
+        total = len(propias) + len(fuera)
+        if not total:
+            que = "de eso " if palabras else ""
+            await self.decir_turno(f"No tienes nada {que}{dia}.", "agenda", pregunta)
+            return True
+
+        # Agrupado por nombre: el 1 de septiembre hay 47 dentistas iguales,
+        # y leerlos uno a uno no es una pregunta, es un castigo
+        cuenta = Counter([f["texto"] for f in propias] + [e["texto"] for e in fuera])
+        partes = [f"{t}, {n} veces" if n > 1 else t
+                  for t, n in cuenta.most_common(4)]
+        if len(cuenta) > 4:
+            partes.append(f"y {len(cuenta) - 4} cosas más")
+
+        self.pendiente["tipo"] = "borrado_dia"
+        self.pendiente["datos"] = {"propias": [f["id"] for f in propias],
+                                   "fuera": [e["id"] for e in fuera]}
+        if total == 1:
+            frase = f"{dia.capitalize()} tienes {partes[0]}. ¿Lo quito?"
+        else:
+            frase = (f"{dia.capitalize()} hay {total} cosas: "
+                     f"{'; '.join(partes)}. ¿Las quito todas?")
+        await self.decir_turno(frase, "confirmar", pregunta)
+        return True
+
+    async def _quitar_del_dia(self, datos, pregunta):
+        """Ya ha dicho si quiere quitar lo de ese dia."""
+        if not es_afirmacion(pregunta):
+            print("[agenda] NO confirmado: se deja lo de ese dia")
+            await self.decir_turno("Vale, lo dejo.", "agenda", pregunta)
+            return
+
+        filas = await asyncio.to_thread(memoria.tareas_por_ids, datos["propias"])
+        if filas:
+            await asyncio.to_thread(memoria.completar_varias, filas)
+        borrados = 0
+        if datos["fuera"]:
+            borrados = await asyncio.to_thread(calendario.borrar_varios,
+                                               datos["fuera"])
+
+        pedidas = len(datos["propias"]) + len(datos["fuera"])
+        hechas = len(filas) + borrados
+        print(f"[agenda] quitadas {hechas} de {pedidas}")
+        if hechas == pedidas:
+            frase = "Hecho, lo he quitado." if hechas == 1 else f"Hecho, he quitado {hechas}."
+        elif hechas:
+            frase = f"He quitado {hechas} de {pedidas}. El resto no he podido."
+        else:
+            frase = "No he podido quitar nada."
+        await self.decir_turno(frase, "completar tarea", pregunta)
 
     async def _buscar_en_el_calendario(self, args, pregunta):
         """Si no esta en la lista, mira en Google Calendar. True si actuo.

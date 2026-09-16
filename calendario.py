@@ -448,3 +448,44 @@ def eventos_para_agenda(desde, hasta):
     except Exception as e:
         print(f"[calendar] no se pudo leer la agenda: {e}")
         return []
+
+
+# Google admite hasta 50 operaciones por lote. Borrar uno a uno son ~250 ms
+# por evento: un dia con cien eventos serian treinta segundos de silencio
+# con el usuario esperando la respuesta. Por lotes, un par de segundos.
+LOTE = 50
+
+
+def borrar_varios(ids):
+    """Borra muchos eventos de una vez. Devuelve cuantos quedaron borrados.
+
+    Un evento que ya no existe (410 o 404) cuenta como borrado: el
+    objetivo era que no estuviera, y no esta.
+    """
+    ids = [i for i in ids if i]
+    servicio = conectar()
+    if not servicio or not ids:
+        return 0
+
+    hechos = [0]
+
+    def al_terminar(_peticion, _respuesta, error):
+        if error is None:
+            hechos[0] += 1
+            return
+        codigo = getattr(getattr(error, "resp", None), "status", None)
+        if codigo in (404, 410):
+            hechos[0] += 1
+        else:
+            print(f"[calendar] no se pudo borrar un evento: {error}")
+
+    for i in range(0, len(ids), LOTE):
+        lote = servicio.new_batch_http_request(callback=al_terminar)
+        for identificador in ids[i:i + LOTE]:
+            lote.add(servicio.events().delete(calendarId="primary",
+                                              eventId=identificador))
+        try:
+            lote.execute()
+        except Exception as e:
+            print(f"[calendar] fallo un lote entero: {e}")
+    return hechos[0]

@@ -57,6 +57,11 @@ CASOS = [
     ("Quita lo del pan",                             "completar_tarea", "completar"),
     ("Cancela la reunión de mañana",                 "completar_tarea", "completar"),
     ("Ya no tengo que llamar al banco",              "completar_tarea", "completar"),
+    # por fecha: el dia manda, no el nombre
+    ("Quita lo del 1 de septiembre",                 "completar_tarea", "completar"),
+    ("Borra todo lo que tenía el 31 de agosto",      "completar_tarea", "completar"),
+    ("Elimina las tareas de mañana",                 "completar_tarea", "completar"),
+    ("Quita el dentista del 1 de septiembre",        "completar_tarea", "completar"),
 
     # ---- reloj ----
     ("¿Qué hora es?",                                "que_hora_es", "reloj"),
