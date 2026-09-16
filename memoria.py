@@ -717,6 +717,24 @@ def completar_varias(filas):
     return f"Hecho, quito {len(filas)} de la lista: {nombres}."
 
 
+def buscar_tarea(texto):
+    """La tarea pendiente que más se parezca, sin tocar nada. None si no hay.
+
+    Separado de completar_tarea porque el servidor necesita PREGUNTAR si
+    existe antes de decidir qué hacer, y preguntar no puede tener el
+    efecto secundario de marcarla como hecha.
+    """
+    busca = set(_sin_tildes(texto).split())
+    with _conectar() as con:
+        filas = con.execute("SELECT * FROM tareas WHERE hecha = 0").fetchall()
+    mejor, puntos = None, 0
+    for f in filas:
+        comunes = len(busca & set(_sin_tildes(f["texto"]).split()))
+        if comunes > puntos:
+            mejor, puntos = f, comunes
+    return mejor
+
+
 def completar_tarea(texto, ahora=None):
     """Marca como hecha la tarea que más se parezca a lo que dijo el usuario.
 
@@ -728,17 +746,10 @@ def completar_tarea(texto, ahora=None):
     if grupo:
         return completar_varias(tareas_del_grupo(grupo, ahora))
 
-    busca = set(_sin_tildes(texto).split())
+    mejor = buscar_tarea(texto)
+    if not mejor:
+        return "No encuentro esa tarea en tu lista."
     with _conectar() as con:
-        filas = con.execute("SELECT * FROM tareas WHERE hecha = 0").fetchall()
-        mejor, puntos = None, 0
-        for f in filas:
-            palabras = set(_sin_tildes(f["texto"]).split())
-            comunes = len(busca & palabras)
-            if comunes > puntos:
-                mejor, puntos = f, comunes
-        if not mejor:
-            return "No encuentro esa tarea en tu lista."
         con.execute("UPDATE tareas SET hecha = 1 WHERE id = ?", (mejor["id"],))
 
     # Si estaba en Google Calendar, se quita también de allí

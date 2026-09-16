@@ -537,6 +537,8 @@ class Conversacion:
         elif nombre == "completar_tarea":
             if await self._confirmar_borrado(args, pregunta):
                 return
+            if await self._buscar_en_el_calendario(args, pregunta):
+                return
 
         if nombre and await self._contestar_con_herramienta(nombre, args, pregunta):
             return
@@ -568,6 +570,8 @@ class Conversacion:
             await self._confirmar_apagado(datos, pregunta)
         elif tipo == "borrado":
             await self._quitar_grupo(datos, pregunta)
+        elif tipo == "borrado_calendario":
+            await self._quitar_del_calendario(datos, pregunta)
         elif tipo == "correo_paso":
             await self._seguir_correo(datos, pregunta)
         elif tipo == "correo":
@@ -779,6 +783,59 @@ class Conversacion:
             f"Eso son {len(cuantas)} tareas: {nombres}. ¿Las quito todas?",
             "confirmar", pregunta)
         return True
+
+    async def _buscar_en_el_calendario(self, args, pregunta):
+        """Si no esta en la lista, mira en Google Calendar. True si actuo.
+
+        Jarvis solo conocia lo que habia en su SQLite. Si creas algo a mano
+        en Calendar —o si la base de datos se vacio alguna vez— esos
+        eventos eran invisibles: "quita el dentista" contestaba "no
+        encuentro esa tarea", que era cierto y no ayudaba.
+
+        Borrar aqui SIEMPRE pregunta, aunque sea uno solo. Un evento que
+        Jarvis no creo es tuyo, puede llevar invitados o llevar ahi meses,
+        y no se toca sin que lo veas.
+        """
+        texto = (args or {}).get("texto", "")
+        if not texto.strip():
+            return False
+        if memoria.buscar_tarea(texto):
+            return False                  # esta en la lista: por la via normal
+
+        eventos = await asyncio.to_thread(calendario.buscar_por_nombre, texto)
+        if not eventos:
+            return False                  # tampoco esta ahi: que conteste el de siempre
+
+        self.pendiente["tipo"] = "borrado_calendario"
+        self.pendiente["datos"] = [e["id"] for e in eventos]
+        cuales = "; ".join(calendario.como_frase(e) for e in eventos[:3])
+        if len(eventos) == 1:
+            frase = (f"Eso no está en tu lista, pero sí en tu calendario: "
+                     f"{cuales}. ¿Lo quito de ahí?")
+        else:
+            frase = (f"Eso no está en tu lista. En el calendario hay "
+                     f"{len(eventos)}: {cuales}. ¿Los quito?")
+        await self.decir_turno(frase, "confirmar", pregunta)
+        return True
+
+    async def _quitar_del_calendario(self, ids, pregunta):
+        """Ya ha dicho si quiere que se borren esos eventos de Google."""
+        if not es_afirmacion(pregunta):
+            print(f"[calendar] NO confirmado: {len(ids)} eventos intactos")
+            await self.decir_turno("Vale, los dejo.", "agenda", pregunta)
+            return
+        hechos = 0
+        for identificador in ids:
+            if await asyncio.to_thread(calendario.borrar_evento, identificador):
+                hechos += 1
+        print(f"[calendar] borrados {hechos} de {len(ids)}")
+        if hechos == 1:
+            frase = "Hecho, lo he quitado del calendario."
+        elif hechos:
+            frase = f"Hecho, he quitado {hechos} del calendario."
+        else:
+            frase = "No he podido quitarlo del calendario."
+        await self.decir_turno(frase, "completar tarea", pregunta)
 
     async def _preparar_correo(self, args, pregunta):
         """Monta el borrador y lo abre para revisarlo. Nunca envia aqui.

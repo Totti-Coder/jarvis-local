@@ -318,3 +318,82 @@ def es_de_jarvis(evento):
     """
     props = (evento.get("extendedProperties") or {}).get("private") or {}
     return props.get("origen") == MARCA
+
+
+def _sin_tildes(s):
+    import unicodedata
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+_VACIAS = {"el", "la", "los", "las", "un", "una", "de", "del", "a", "al",
+           "mi", "mis", "lo", "y", "o", "para", "con", "que", "en", "por",
+           "tarea", "tareas", "evento", "eventos", "cita", "calendario"}
+
+
+def buscar_por_nombre(texto, desde=None, hasta=None):
+    """Eventos del calendario que se parezcan a lo que ha dicho el usuario.
+
+    Hace falta porque Jarvis solo conocia lo que estaba en SQLite. Si
+    creas algo a mano en Calendar, o si la base de datos se vacio alguna
+    vez, esos eventos eran invisibles: pedir "quita el dentista"
+    contestaba "no encuentro esa tarea", que era cierto e inutil.
+
+    Empareja por palabras COMPLETAS y descarta las vacias: sin eso,
+    "administrador de tareas" encajaba con "Acerca de Java" porque
+    compartian el "de".
+    """
+    from datetime import datetime, timedelta
+    desde = desde or datetime.utcnow() - timedelta(days=90)
+    hasta = hasta or datetime.utcnow() + timedelta(days=365)
+
+    busca = {p for p in re_palabras(_sin_tildes(texto))} - _VACIAS
+    if not busca:
+        return []
+
+    encontrados = []
+    for ev in listar_eventos(desde, hasta):
+        titulo = {p for p in re_palabras(_sin_tildes(ev.get("summary") or ""))}
+        comunes = len(busca & (titulo - _VACIAS))
+        if comunes:
+            encontrados.append((comunes, ev))
+
+    # Mejor coincidencia primero; a igualdad, el mas proximo en el tiempo
+    encontrados.sort(key=lambda x: (-x[0], _inicio_de(x[1])))
+    mejor = encontrados[0][0] if encontrados else 0
+    return [ev for puntos, ev in encontrados if puntos == mejor]
+
+
+def re_palabras(t):
+    import re
+    return re.findall(r"[a-z0-9]{2,}", t)
+
+
+def _inicio_de(ev):
+    i = ev.get("start", {})
+    return i.get("dateTime") or i.get("date") or ""
+
+
+def como_frase(ev):
+    """El evento dicho en voz alta: "dentista, el 1 de septiembre a las 9"."""
+    from datetime import datetime
+    MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    titulo = ev.get("summary") or "(sin título)"
+    crudo = _inicio_de(ev)
+    if not crudo:
+        return titulo
+    try:
+        d = datetime.fromisoformat(crudo.replace("Z", "+00:00"))
+    except ValueError:
+        return titulo
+    cuando = f"el {d.day} de {MESES[d.month - 1]}"
+    if "T" in crudo:
+        # La hora la dice memoria, que ya sabe convertir 17:00 en "5 de la
+        # tarde". Import perezoso: memoria tambien importa esto.
+        try:
+            import memoria
+            cuando += " " + memoria.hora_hablada(d.hour, d.minute)
+        except Exception:
+            cuando += f" a las {d.hour}"
+    return f"{titulo}, {cuando}"

@@ -106,6 +106,21 @@ ESCENARIOS = [
     ("correo_paso_asunto",  "La reunión del jueves",        (None, None), ("correo_paso", "asunto")),
     ("correo_abandona",     "déjalo",                       (None, None), ("correo_paso", "asunto")),
     ("correo_confirma_no",  "no",                           (None, None), ("correo", None)),
+    # No esta en la lista pero SI en Google Calendar: se pregunta antes
+    ("calendario_pregunta", "Quita el dentista",            ("completar_tarea", {"texto": "el dentista"}), None),
+    ("calendario_si",       "sí",                           (None, None), ("borrado_calendario", ["e1", "e2"])),
+    ("calendario_no",       "no",                           (None, None), ("borrado_calendario", ["e1", "e2"])),
+    # Ni en la lista ni en el calendario: contesta la herramienta de siempre
+    ("no_esta_en_ningun_sitio", "Quita lo del gimnasio",    ("completar_tarea", {"texto": "gimnasio"}), None),
+]
+
+# Calendario de mentira, con los duplicados que dejaron las pruebas
+EVENTOS_FALSOS = [
+    {"id": "e1", "summary": "dentista",
+     "start": {"dateTime": "2026-09-01T09:00:00+02:00"}},
+    {"id": "e2", "summary": "dentista",
+     "start": {"dateTime": "2026-09-01T17:00:00+02:00"}},
+    {"id": "e3", "summary": "comprar pan", "start": {"date": "2026-09-01"}},
 ]
 
 
@@ -144,6 +159,12 @@ async def un_turno(escenario):
     servidor.redactar_correo = lambda e, d="", a="": "Hola Ana, llego tarde."
     servidor.sistema.ejecutar_accion = lambda a: "Apagando."
 
+    # El calendario tampoco se toca de verdad
+    servidor.calendario.conectar = lambda interactivo=False: True
+    servidor.calendario.borrar_evento = lambda i: True
+    servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
+        [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
+
     # El conversador: se devuelve un chorro fijo, troceado como el de verdad
     def chat_falso(**k):
         if k.get("stream"):
@@ -161,6 +182,8 @@ async def un_turno(escenario):
             conv.pendiente = {"tipo": "correo_paso", "datos": {
                 "email": "ana@ejemplo.com", "nombre": "Ana",
                 "asunto": "", "mensaje": "", "paso": datos}}
+        elif tipo == "borrado_calendario":
+            conv.pendiente = {"tipo": "borrado_calendario", "datos": datos}
         elif tipo == "correo":
             conv.pendiente = {"tipo": "correo", "datos": {
                 "email": "ana@ejemplo.com", "nombre": "Ana",

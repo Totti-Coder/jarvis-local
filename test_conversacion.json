@@ -464,5 +464,109 @@
    "estado",
    "inactivo"
   ]
+ ],
+ "calendario_pregunta": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "confirmar"
+  ],
+  [
+   "token",
+   "Eso no está en tu lista. En el calendario hay 2: dentista, el 1 de septiembre a las 9 de la mañana; dentista, el 1 de septiembre a las 5 de la tarde. ¿Los quito?"
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "calendario_si": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "completar tarea"
+  ],
+  [
+   "token",
+   "Hecho, he quitado 2 del calendario."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "calendario_no": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "agenda"
+  ],
+  [
+   "token",
+   "Vale, los dejo."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "no_esta_en_ningun_sitio": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "completar_tarea"
+  ],
+  [
+   "token",
+   "Hoy tienes: dentista a las 5."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
  ]
 }
