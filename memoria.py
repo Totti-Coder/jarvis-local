@@ -68,6 +68,19 @@ def preparar():
             con.execute("ALTER TABLE tareas ADD COLUMN evento_id TEXT")
         except Exception:
             pass
+        # Los avisos ya dados. Tabla aparte y no una columna en tareas
+        # porque tambien se avisa de eventos que solo estan en Google, y
+        # esos no tienen fila propia. La clave lleva la hora dentro: si una
+        # tarea se cambia de hora, se vuelve a avisar.
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS avisos (
+                clave TEXT PRIMARY KEY,
+                dado  TEXT NOT NULL
+            )
+        """)
+        # Crece con cada aviso: lo de hace mas de una semana ya no sirve
+        hace_semana = (datetime.now() - timedelta(days=7)).isoformat()
+        con.execute("DELETE FROM avisos WHERE dado < ?", (hace_semana,))
         # Datos sobre el usuario: su nombre, dónde vive, a qué se dedica.
         # Van aparte de las tareas porque no son cosas que hacer y no se
         # completan nunca. Sin esta tabla, "me llamo Toti" acababa apuntado
@@ -401,11 +414,9 @@ def anadir_tarea(texto, cuando=""):
     # Espejo en Google Calendar. Va DESPUÉS de guardar en SQLite y a
     # propósito: si Google falla o no hay internet, la tarea ya está a
     # salvo y el usuario no se entera de nada.
-    if momento:
+    if momento and crear_externo is not None:
         try:
-            import calendario
-            evento = calendario.crear_evento(texto.strip(),
-                                             momento.isoformat(), tiene_hora)
+            evento = crear_externo(texto.strip(), momento.isoformat(), tiene_hora)
             if evento:
                 with _conectar() as con:
                     con.execute("UPDATE tareas SET evento_id = ? WHERE id = ?",
@@ -593,6 +604,15 @@ PALABRAS_VACIAS = {"el", "la", "los", "las", "un", "una", "de", "del", "a",
 # Es la misma idea que el parametro `ahora`: lo que cambia solo se inyecta.
 fuente_externa = None      # funcion (desde, hasta) -> [ {texto, cuando_iso, ...} ]
 
+# Lo mismo para ESCRIBIR. Antes memoria llamaba a Google directamente, y eso
+# hizo que la bateria de tests metiera eventos en el calendario real del
+# usuario: los tests aislaban SQLite con una base temporal, pero cada
+# anadir_tarea() creaba un "dentista" de verdad en Google, que quedaba
+# huerfano al borrar la base. Cientos, a lo largo de semanas. Ahora solo el
+# servidor engancha esto; los tests, sin tocar nada, no escriben fuera.
+crear_externo = None       # funcion (texto, cuando_iso, tiene_hora) -> id
+borrar_externo = None      # funcion (id) -> bool
+
 # Sin ventana ("¿que tengo pendiente?") solo se mira hacia delante. Hacia
 # atras hay decenas de eventos huerfanos de las pruebas, y leerlos todos
 # convertiria la respuesta en una lista de dentistas de hace dos semanas.
@@ -632,8 +652,101 @@ def _de_fuera(desde, hasta, ahora):
             continue
         vistos.add(clave)
         salida.append({"texto": ev["texto"], "cuando_iso": ev["cuando_iso"],
-                       "tiene_hora": ev["tiene_hora"]})
+                       "tiene_hora": ev["tiene_hora"], "id": ev.get("id")})
     return salida
+
+
+# ---------------------------------------------------------------
+# AVISOS A LA HORA
+#
+# Hasta aqui la agenda solo contestaba: si tenias algo a las 17:00, a las
+# 17:00 no pasaba nada. Ahora avisa ella, un rato antes.
+# ---------------------------------------------------------------
+
+AVISO_ANTES_MIN = 10       # con cuanta antelacion
+# Lo que empezo hace un momento tambien se avisa: el servidor revisa cada
+# pocos segundos, y algo que cae justo entre dos revisiones no puede
+# perderse. Mas atras no: si Jarvis estaba apagado, eso ya lo cuenta el
+# saludo de la manana como atrasado.
+AVISO_TOLERANCIA_MIN = 2
+# Google no se consulta en cada revision, que son cada 20 segundos: se
+# guarda lo de la proxima hora y se refresca cada cinco minutos.
+REFRESCO_FUERA_S = 300
+_cache_fuera = {"cuando": None, "hasta": None, "eventos": []}
+
+
+def _externos_proximos(ahora):
+    if fuente_externa is None:
+        return []
+    c = _cache_fuera
+    vigente = (c["cuando"] is not None
+               and c["cuando"] <= ahora
+               and (ahora - c["cuando"]).total_seconds() < REFRESCO_FUERA_S
+               and ahora + timedelta(minutes=AVISO_ANTES_MIN) <= c["hasta"])
+    if not vigente:
+        hasta = ahora + timedelta(hours=1)
+        c["eventos"] = _de_fuera(ahora - timedelta(minutes=AVISO_TOLERANCIA_MIN),
+                                 hasta, ahora)
+        c["cuando"], c["hasta"] = ahora, hasta
+    return c["eventos"]
+
+
+def pendientes_de_aviso(ahora=None, antes_min=AVISO_ANTES_MIN):
+    """Lo que empieza pronto y aun no se ha avisado, del mas proximo al mas lejano.
+
+    Devuelve [(clave, texto, momento)]. Solo cosas CON hora: "comprar pan"
+    sin hora no tiene un momento en el que avisar, y ya sale en el saludo.
+    """
+    ahora = ahora or datetime.now()
+    desde = ahora - timedelta(minutes=AVISO_TOLERANCIA_MIN)
+    hasta = ahora + timedelta(minutes=antes_min)
+
+    candidatos = []
+    with _conectar() as con:
+        for f in con.execute(
+                "SELECT id, texto, cuando_iso FROM tareas "
+                "WHERE hecha = 0 AND tiene_hora = 1 AND cuando_iso IS NOT NULL"):
+            momento = datetime.fromisoformat(f["cuando_iso"])
+            if desde <= momento <= hasta:
+                candidatos.append((f"t:{f['id']}:{f['cuando_iso']}",
+                                   f["texto"], momento))
+        dados = {r["clave"] for r in con.execute("SELECT clave FROM avisos")}
+
+    for ev in _externos_proximos(ahora):
+        if not ev["tiene_hora"]:
+            continue
+        momento = datetime.fromisoformat(ev["cuando_iso"])
+        if desde <= momento <= hasta:
+            candidatos.append((f"g:{ev['id']}:{ev['cuando_iso']}",
+                               ev["texto"], momento))
+
+    return sorted((c for c in candidatos if c[0] not in dados),
+                  key=lambda c: c[2])
+
+
+def marcar_avisado(clave, ahora=None):
+    """Se queda el aviso. True si nadie lo habia dado ya.
+
+    Es atomico a proposito: con dos pestanas abiertas hay dos vigilantes,
+    y los dos ven el mismo aviso pendiente a la vez. INSERT OR IGNORE deja
+    entrar solo al primero, asi que solo una de las dos lo dice.
+    """
+    with _conectar() as con:
+        cur = con.execute("INSERT OR IGNORE INTO avisos (clave, dado) VALUES (?, ?)",
+                          (clave, (ahora or datetime.now()).isoformat()))
+        return cur.rowcount == 1
+
+
+def frase_de_aviso(texto, momento, ahora=None):
+    """El aviso dicho en voz alta."""
+    ahora = ahora or datetime.now()
+    minutos = round((momento - ahora).total_seconds() / 60)
+    if minutos <= 0:
+        return f"Es la hora: {texto}."
+    hora = hora_hablada(momento.hour, momento.minute)
+    if minutos == 1:
+        return f"Te recuerdo: {texto} {hora}, dentro de un minuto."
+    return f"Te recuerdo: {texto} {hora}, dentro de {minutos} minutos."
 
 
 def listar_tareas(cuando="", texto="", ahora=None):
@@ -759,10 +872,9 @@ def completar_varias(filas):
             ids)
 
     for f in filas:
-        if f["evento_id"]:
+        if f["evento_id"] and borrar_externo is not None:
             try:
-                import calendario
-                calendario.borrar_evento(f["evento_id"])
+                borrar_externo(f["evento_id"])
             except Exception as e:
                 print(f"[calendar] no se pudo borrar el evento: {e}")
 
@@ -808,10 +920,9 @@ def completar_tarea(texto, ahora=None):
         con.execute("UPDATE tareas SET hecha = 1 WHERE id = ?", (mejor["id"],))
 
     # Si estaba en Google Calendar, se quita también de allí
-    if mejor["evento_id"]:
+    if mejor["evento_id"] and borrar_externo is not None:
         try:
-            import calendario
-            calendario.borrar_evento(mejor["evento_id"])
+            borrar_externo(mejor["evento_id"])
         except Exception as e:
             print(f"[calendar] no se pudo borrar el evento: {e}")
 

@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-190_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-242_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -173,8 +173,9 @@ mover Whisper a CPU.
 - Franjas: *"mañana por la tarde"*
 - Tramos: *"entre las 2 y las 5"*
 - *"el fin de semana"* = vie+sáb+dom
-- Espejo en Google Calendar
+- Lee y escribe tu Google Calendar
 - Te resume el día al entrar
+- **Te avisa 10 min antes**, sin preguntar
 
 </td>
 <td width="33%" valign="top">
@@ -349,14 +350,14 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**190 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**242 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 93 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 122 de los 190 casos**, sin instalar una sola dependencia:
+**En CI corren 143 de los 242 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
-del usuario y el parseo MIME del correo. Los otros 68 necesitan GPU, Ollama
+del usuario y el parseo MIME del correo. Los otros 99 necesitan GPU, Ollama
 y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
 que el runner no puede probar sería peor que no tener CI.
 
@@ -502,12 +503,13 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
 | Hecho | Siguiente |
 |:---|:---|
 | ✅ Pipeline voz a voz con streaming | ⬜ Mensajes por Discord |
-| ✅ Agenda persistente + tool calling | ⬜ Avisos a la hora, sin preguntar |
+| ✅ Agenda persistente + tool calling | |
 | ✅ Intérprete de fechas en español | |
 | ✅ VAD con Silero (corte automático) | ⬜ `docker compose up` |
 | ✅ Hablarle desde el móvil (HTTPS + AudioWorklet) | |
 | ✅ Correo por Gmail (leer y enviar) | ⬜ Abstracción `LLMProvider` |
 | ✅ Control del PC con lista blanca | |
+| ✅ Avisos a la hora, sin preguntar | |
 | ✅ Eval suite del router | |
 
 ---
@@ -518,7 +520,6 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
   firma tu propio PC, así que el navegador avisa. No hay forma de evitarlo
   sin un dominio público.
 - **El control del sistema es de Windows** (`taskkill`, registro, rutas).
-- **No avisa solo.** Hay que preguntarle o abrir la página.
 - **Horas en letra.** "A las ocho cuarenta" no se interpreta; en cifras sí, y
   Whisper casi siempre transcribe los números como cifras.
 

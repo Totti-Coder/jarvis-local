@@ -54,9 +54,16 @@ memoria.preparar()
 # solo de SQLite y dan lo mismo tengas lo que tengas en tu calendario.
 if calendario.disponible():
     memoria.fuente_externa = calendario.eventos_para_agenda
+    memoria.crear_externo = calendario.crear_evento
+    memoria.borrar_externo = calendario.borrar_evento
 print("Listo.")
 print(f"  {calendario.estado()}")
 print(f"  {correo.estado()}")
+
+
+# Cada cuanto se mira si toca avisar de algo. Mas a menudo no aporta: los
+# avisos van con diez minutos de antelacion.
+AVISO_CADA_S = 20
 
 
 def recortar_historial(historial):
@@ -134,6 +141,9 @@ class Conversacion:
         self.tarea_limite = None
         self.tarea_silencio = None
 
+        self.tarea_avisos = None
+        self.estado = "inactivo"
+
         # Se fija en correr(), que es cuando hay bucle de asyncio
         self.bucle_principal = None
 
@@ -192,6 +202,7 @@ class Conversacion:
                 await self.comandos.put(FIN)
 
             self.tarea_receptor = asyncio.create_task(receptor())
+            self.tarea_avisos = asyncio.create_task(self.vigilar_avisos())
 
             while True:
                 mensaje = await self.comandos.get()
@@ -223,6 +234,14 @@ class Conversacion:
 
                 if not self.grabando:
                     self.grabando = True
+                    # Con los avisos, Jarvis puede estar hablando SOLO cuando
+                    # pulsas. Si no se le calla, el micro graba su voz y se
+                    # transcribe encima de la tuya. La pausa deja al hilo de
+                    # voz ver el corte antes de volver a permitirle hablar.
+                    if self.estado == "hablando":
+                        cortar_voz()
+                        await self.enviar(tipo="voz_corta")
+                        await asyncio.sleep(0.1)
                     permitir_voz()
                     self.micro.empezar()
                     await self.enviar(tipo="estado", valor="escuchando")
@@ -280,7 +299,7 @@ class Conversacion:
             pass
         finally:
             for t in (self.tarea_medidor, self.tarea_parciales, self.tarea_limite,
-                      self.tarea_silencio, self.tarea_receptor):
+                      self.tarea_silencio, self.tarea_receptor, self.tarea_avisos):
                 if t:
                     t.cancel()
             cortar_voz()          # si se va con el asistente hablando, que calle
@@ -292,6 +311,11 @@ class Conversacion:
 
 
     async def enviar(self, **datos):
+        # El estado se apunta al pasar: es la unica fuente fiable de si
+        # Jarvis esta libre. Todo cambio de estado sale por aqui, asi que
+        # lo que ve la interfaz y lo que cree el servidor no se separan.
+        if datos.get("tipo") == "estado":
+            self.estado = datos.get("valor")
         try:
             await self.sock.send_text(json.dumps(datos))
         except Exception:
@@ -318,7 +342,12 @@ class Conversacion:
         await self.enviar(tipo="dicho", texto=frase, etiqueta=etiqueta)
         await self.enviar(tipo="estado", valor="hablando")
         await asyncio.to_thread(hablar, frase)
-        await self.enviar(tipo="estado", valor="inactivo")
+        # Si mientras hablaba se pulso el micro, el estado ya es otro.
+        # Devolverlo a "inactivo" dejaria la interfaz en reposo con el
+        # microfono grabando, y el movil —que solo manda audio mientras
+        # el estado es "escuchando"— dejaria de enviar a media frase.
+        if not self.grabando and self.estado == "hablando":
+            await self.enviar(tipo="estado", valor="inactivo")
 
     async def decir_turno(self, frase, etiqueta=None, pregunta=None):
         """Dice una frase corta y cierra el turno, sin pasar por el modelo.
@@ -1060,6 +1089,40 @@ class Conversacion:
 
         await self.enviar(tipo="usuario", texto=texto)
         await self.responder(texto)
+
+    async def vigilar_avisos(self):
+        """Avisa un rato antes de lo que tienes apuntado. Sin que preguntes.
+
+        Solo habla cuando Jarvis esta libre: nunca mientras grabas, piensa o
+        contesta, ni con una pregunta en el aire (un "si" a "¿apago el
+        ordenador?" no puede quedar pisado por un recordatorio). Si esta
+        ocupado, el aviso espera a la siguiente vuelta.
+        """
+        while True:
+            await asyncio.sleep(AVISO_CADA_S)
+            if (self.grabando or self.estado != "inactivo"
+                    or self.pendiente["tipo"]):
+                continue
+            try:
+                avisos = await asyncio.to_thread(memoria.pendientes_de_aviso)
+            except Exception as e:
+                print(f"[avisos] no se pudo mirar la agenda: {e}")
+                continue
+            for clave, texto, momento in avisos:
+                # Mirar la agenda puede tardar (Google). Si mientras tanto
+                # has pulsado el micro, el aviso espera: no se marca como
+                # dado, asi que sale en la siguiente vuelta libre.
+                if (self.grabando or self.estado != "inactivo"
+                        or self.pendiente["tipo"]):
+                    break
+                # marcar_avisado es atomico: con dos pestanas abiertas solo
+                # una se lo queda, y la otra no lo repite
+                if not await asyncio.to_thread(memoria.marcar_avisado, clave):
+                    continue
+                frase = memoria.frase_de_aviso(texto, momento)
+                print(f"[avisos] {frase}")
+                await self.decir_suelto(frase, "recordatorio")
+                break          # de uno en uno: si hay otro, en la siguiente vuelta
 
     async def vigilar_limite(self):
         """Corta sola la grabación a los MAX_GRABACION_S segundos."""

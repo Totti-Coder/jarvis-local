@@ -20,19 +20,39 @@ darle los nombres a mano, y aun asi te los lista antes de tocarlos.
 
 Uso:
     python limpiar_calendario.py                   ve que hay, sin borrar
+    python limpiar_calendario.py --pruebas         borra lo que dejaron los tests
     python limpiar_calendario.py --marcados        borra los que creo Jarvis
     python limpiar_calendario.py --nombre dentista borra los que se llamen asi
     python limpiar_calendario.py --dias 120        cuanto hacia atras mirar
 """
 
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 sys.stdout.reconfigure(encoding="utf-8")
 
 import calendario
 
 DIAS_ATRAS = 120
+
+# Lo que dejaron los tests. Durante semanas, test_resumen y test_ventanas
+# escribieron en el calendario real (ya no: memoria solo toca Google si el
+# servidor se lo engancha). Tienen una huella inconfundible: estos nombres
+# Y el reloj congelado de los tests, que fecha todo el 31 de agosto o el 1
+# de septiembre de 2026, aunque se crearan otro dia. Exigir las dos cosas
+# a la vez evita llevarse un "dentista" tuyo de verdad.
+NOMBRES_PRUEBA = {"comprar pan", "dentista", "llamar al banco",
+                  "sacar la basura", "ver la peli"}
+FECHAS_PRUEBA = {"2026-08-31", "2026-09-01"}
+
+
+def es_de_las_pruebas(evento):
+    titulo = (evento.get("summary") or "").strip().lower()
+    inicio = evento.get("start", {})
+    fecha = (inicio.get("dateTime") or inicio.get("date") or "")[:10]
+    return titulo in NOMBRES_PRUEBA and fecha in FECHAS_PRUEBA
+
+
 DIAS_ADELANTE = 365
 
 
@@ -56,13 +76,16 @@ def main():
         return 1
 
     dias = int(argumento("--dias", DIAS_ATRAS))
-    ahora = datetime.utcnow()
+    ahora = datetime.now(timezone.utc).replace(tzinfo=None)
     eventos = calendario.listar_eventos(ahora - timedelta(days=dias),
                                         ahora + timedelta(days=DIAS_ADELANTE))
     print(f"{len(eventos)} eventos entre hace {dias} días y dentro de un año.\n")
 
     nombre = argumento("--nombre")
-    if nombre:
+    if "--pruebas" in sys.argv:
+        objetivo = [e for e in eventos if es_de_las_pruebas(e)]
+        criterio = "dejaron los tests (nombre y fecha de prueba)"
+    elif nombre:
         objetivo = [e for e in eventos
                     if nombre.lower() in (e.get("summary") or "").lower()]
         criterio = f"se llaman como {nombre!r}"
@@ -80,7 +103,11 @@ def main():
         print("Qué hay, agrupado por nombre:")
         for titulo, n in sorted(cuenta.items(), key=lambda x: -x[1]):
             print(f"  {n:>4}  {titulo}")
+        pruebas = sum(es_de_las_pruebas(e) for e in eventos)
         print("\nPara borrar:")
+        if pruebas:
+            print(f"  python limpiar_calendario.py --pruebas    "
+                  f"({pruebas} restos de los tests)")
         print("  python limpiar_calendario.py --marcados")
         print("  python limpiar_calendario.py --nombre dentista")
         return 0

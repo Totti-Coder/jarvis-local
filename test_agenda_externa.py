@@ -157,7 +157,35 @@ m = calendario.como_tarea({"id": "m", "summary": "x",
                            "extendedProperties": {"private": {"origen": "jarvis"}}})
 comprueba("se sabe si lo creo Jarvis", m["marcado"] is True)
 
-memoria.fuente_externa = None
+print("\n" + "=" * 70)
+print("LOS TESTS NO ESCRIBEN EN TU CALENDARIO")
+print("=" * 70)
+# Paso de verdad: test_resumen y test_ventanas usaban una base temporal,
+# pero anadir_tarea() llamaba a Google igualmente. Cada vez que corria la
+# bateria con el permiso vigente, siete eventos nuevos en el calendario
+# real: mas de doscientos en unas semanas. Esto vigila que no vuelva.
+llamadas = []
+calendario_crear, calendario_borrar = calendario.crear_evento, calendario.borrar_evento
+calendario.crear_evento = lambda *a, **k: llamadas.append(("crear", a)) or "id-falso"
+calendario.borrar_evento = lambda *a, **k: llamadas.append(("borrar", a)) or True
+
+memoria.fuente_externa = memoria.crear_externo = memoria.borrar_externo = None
+memoria.anadir_tarea("espia", "mañana a las 10")
+memoria.completar_tarea("espia")
+memoria.anadir_tarea("espia dos", "mañana a las 11")
+memoria.completar_varias(memoria.tareas_del_grupo("todas"))
+comprueba("sin enganchar, memoria no toca Google", llamadas == [], str(llamadas))
+
+# Y enganchado —como hace el servidor— si lo hace
+memoria.crear_externo = calendario.crear_evento
+memoria.borrar_externo = calendario.borrar_evento
+memoria.anadir_tarea("espia tres", "mañana a las 12")
+memoria.completar_tarea("espia tres")
+tipos = [t for t, _ in llamadas]
+comprueba("enganchado, crea y borra en Google", tipos == ["crear", "borrar"], str(tipos))
+
+calendario.crear_evento, calendario.borrar_evento = calendario_crear, calendario_borrar
+memoria.fuente_externa = memoria.crear_externo = memoria.borrar_externo = None
 os.remove(memoria.BASE)
 
 print("\n" + "=" * 70)
