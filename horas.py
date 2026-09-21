@@ -100,11 +100,20 @@ def preparar():
             fin     TEXT)""")
         con.execute("CREATE INDEX IF NOT EXISTS ix_sesiones_clave "
                     "ON sesiones (clave)")
+        # Migración: las apuntadas a mano ("ayer trabajé 2 horas") no tienen
+        # hora de inicio real, y el CSV no debe inventársela
+        columnas = [c[1] for c in con.execute("PRAGMA table_info(sesiones)")]
+        if "manual" not in columnas:
+            con.execute("ALTER TABLE sesiones ADD COLUMN manual INTEGER NOT NULL DEFAULT 0")
 
 
 def _normal(s):
     s = unicodedata.normalize("NFD", (s or "").lower())
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    # El decimal se salva ANTES de quitar signos: "3,5 horas" se quedaba en
+    # "3 5 horas", y se leían 5 horas. En facturación, eso es una hora y
+    # media de más en la factura
+    s = re.sub(r"(\d)[.,](\d)", r"\1 coma \2", s)
     return " ".join(re.sub(r"[^a-z0-9 ]+", " ", s).split())
 
 
@@ -306,6 +315,112 @@ def aviso_al_entrar(ahora=None):
             f"dime a qué hora.")
 
 
+# ---------------------------------------------------------------
+# CORREGIR: lo más habitual es olvidarse de fichar
+# ---------------------------------------------------------------
+
+# Un día de trabajo no tiene más. Por encima, casi seguro es un error de
+# transcripción ("20 horas" por "2 horas"), y se pide repetirlo
+MAX_A_MANO_H = 16
+
+
+def anadir(clave, segundos, dia, ahora=None, nombre=None):
+    """Apunta horas de algo ya hecho: "ayer trabajé 2 horas para García".
+
+    No hay hora de inicio real, así que la sesión se marca como manual y
+    va al principio de ese día. Para los totales solo cuentan el día y la
+    duración, y el CSV no se inventa horas que nadie dijo.
+    """
+    ahora = ahora or datetime.now()
+    if segundos > MAX_A_MANO_H * 3600:
+        return (f"¿{duracion_hablada(segundos)} en un día? Me parece mucho; "
+                f"dímelo otra vez, o por días.")
+    nombre = clientes().get(clave) or nombre or nombre_bonito(clave)
+    inicio = datetime.combine(dia, datetime.min.time())
+    with memoria._conectar() as con:
+        con.execute("INSERT INTO sesiones (cliente, clave, inicio, fin, manual) "
+                    "VALUES (?, ?, ?, ?, 1)",
+                    (nombre, clave, inicio.isoformat(),
+                     (inicio + timedelta(seconds=segundos)).isoformat()))
+    return (f"Apuntadas {duracion_hablada(segundos)} para {nombre} "
+            f"{dia_hablado(dia, ahora)}.")
+
+
+def ultima():
+    """La última sesión registrada, abierta o no."""
+    with memoria._conectar() as con:
+        f = con.execute("SELECT id, cliente, clave, inicio, fin, manual "
+                        "FROM sesiones ORDER BY id DESC LIMIT 1").fetchone()
+    if not f:
+        return None
+    return {"id": f[0], "cliente": f[1], "clave": f[2],
+            "inicio": datetime.fromisoformat(f[3]),
+            "fin": datetime.fromisoformat(f[4]) if f[4] else None,
+            "manual": bool(f[5])}
+
+
+def describir(s, ahora=None):
+    """Una sesión dicha con lo justo para reconocerla antes de borrarla."""
+    ahora = ahora or datetime.now()
+    fin = s["fin"] or ahora
+    dura = duracion_hablada((fin - s["inicio"]).total_seconds())
+    if s["manual"]:
+        return f"{s['cliente']}, {dura} apuntadas a mano {dia_hablado(s['inicio'].date(), ahora)}"
+    if s["fin"] is None:
+        return f"{s['cliente']}, en marcha desde {momento_hablado(s['inicio'], ahora)}"
+    return f"{s['cliente']}, {momento_hablado(s['inicio'], ahora)}, {dura}"
+
+
+def borrar_sesion(id_):
+    with memoria._conectar() as con:
+        return con.execute("DELETE FROM sesiones WHERE id = ?", (id_,)).rowcount == 1
+
+
+def restar(clave, segundos, ahora=None):
+    """"Quítale media hora a Acme": se recorta su ÚLTIMA sesión.
+
+    Es lo que se quiere casi siempre (la que se dejó correr de más). Si esa
+    sesión dura menos de lo que se quiere quitar, no se toca nada: repartir
+    el recorte entre varias sesiones sería adivinar.
+    """
+    ahora = ahora or datetime.now()
+    with memoria._conectar() as con:
+        f = con.execute("SELECT id, cliente, inicio, fin FROM sesiones "
+                        "WHERE clave = ? ORDER BY id DESC LIMIT 1", (clave,)).fetchone()
+    if not f:
+        return f"No tengo horas con {nombre_bonito(clave)}."
+    id_, nombre, ini, fin = f
+    inicio = datetime.fromisoformat(ini)
+    final = datetime.fromisoformat(fin) if fin else ahora
+    dura = (final - inicio).total_seconds()
+    if segundos >= dura:
+        return (f"La última sesión de {nombre} solo tiene {duracion_hablada(dura)}: "
+                f"no puedo quitarle {duracion_hablada(segundos)}.")
+    with memoria._conectar() as con:
+        if fin:
+            con.execute("UPDATE sesiones SET fin = ? WHERE id = ?",
+                        ((final - timedelta(seconds=segundos)).isoformat(), id_))
+        else:
+            # Abierta: se retrasa el inicio, que es lo que se contó de más
+            con.execute("UPDATE sesiones SET inicio = ? WHERE id = ?",
+                        ((inicio + timedelta(seconds=segundos)).isoformat(), id_))
+    return (f"Quitadas {duracion_hablada(segundos)} a {nombre}. Su última "
+            f"sesión queda en {duracion_hablada(dura - segundos)}.")
+
+
+def dia_hablado(dia, ahora):
+    dias = (ahora.date() - dia).days
+    if dias == 0:
+        return "hoy"
+    if dias == 1:
+        return "ayer"
+    if dias == 2:
+        return "anteayer"
+    if dias < 7:
+        return f"el {memoria.DIAS_ES[dia.weekday()]}"
+    return f"el {dia.day} de {MESES[dia.month - 1]}"
+
+
 def sesiones(desde, hasta, ahora=None):
     """Las sesiones que tocan [desde, hasta), recortadas a esa ventana.
 
@@ -315,18 +430,19 @@ def sesiones(desde, hasta, ahora=None):
     ahora = ahora or datetime.now()
     with memoria._conectar() as con:
         filas = con.execute(
-            "SELECT cliente, clave, inicio, fin FROM sesiones "
+            "SELECT cliente, clave, inicio, fin, manual FROM sesiones "
             "WHERE inicio < ? AND (fin IS NULL OR fin > ?) ORDER BY inicio",
             (hasta.isoformat(), desde.isoformat())).fetchall()
     salida = []
-    for cliente, clave, ini, fin in filas:
+    for cliente, clave, ini, fin, manual in filas:
         a = max(datetime.fromisoformat(ini), desde)
         b = min(datetime.fromisoformat(fin) if fin else ahora, hasta)
         # La abierta sale aunque acabe de empezar: si no, "¿cuántas horas
         # llevo?" justo después de "empiezo con Acme" diría que ninguna
         if b > a or (fin is None and b == a):
             salida.append({"cliente": cliente, "clave": clave, "inicio": a,
-                           "fin": b, "abierta": fin is None})
+                           "fin": b, "abierta": fin is None,
+                           "manual": bool(manual)})
     return salida
 
 
@@ -356,9 +472,12 @@ def exportar_csv(desde, hasta, ruta, ahora=None):
             cliente = s["cliente"]
             if cliente[:1] in ("=", "+", "-", "@", "\t", "\r"):
                 cliente = "'" + cliente
-            w.writerow([cliente, f"{s['inicio']:%d/%m/%Y}",
-                        f"{s['inicio']:%H:%M}",
-                        f"{s['fin']:%H:%M}" + (" (en curso)" if s["abierta"] else ""),
+            if s["manual"]:
+                entrada, salida_ = "", "(apuntada a mano)"
+            else:
+                entrada = f"{s['inicio']:%H:%M}"
+                salida_ = f"{s['fin']:%H:%M}" + (" (en curso)" if s["abierta"] else "")
+            w.writerow([cliente, f"{s['inicio']:%d/%m/%Y}", entrada, salida_,
                         f"{horas:.2f}".replace(".", ",")])
     return len(filas)
 
@@ -420,6 +539,81 @@ def periodo(texto, ahora=None):
 
 
 # ---------------------------------------------------------------
+# DURACIONES Y DÍAS DICHOS
+# ---------------------------------------------------------------
+
+_NUMEROS = {"un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4,
+            "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9,
+            "diez": 10, "once": 11, "doce": 12, "quince": 15, "veinte": 20,
+            "treinta": 30, "cuarenta": 40, "cuarenta y cinco": 45}
+
+
+def duracion_en(t):
+    """"2 horas y media", "hora y media", "45 minutos" -> segundos, o None.
+
+    Whisper escribe unas veces "2 horas" y otras "dos horas": se aceptan
+    las dos. `t` ya viene normalizado (sin tildes, en minúsculas).
+    """
+    # Las expresiones hechas, ANTES de pasar números a cifras: si no,
+    # "tres cuartos de hora" se volvería "3 cuartos de hora"
+    t = re.sub(r"\btres cuartos de hora\b", "45 minutos", t)
+    t = re.sub(r"\b(?:un )?cuarto de hora\b", "15 minutos", t)
+    t = re.sub(r"\bmedia hora\b", "30 minutos", t)
+    for palabra in sorted(_NUMEROS, key=len, reverse=True):
+        t = re.sub(rf"\b{palabra}\b(?= (?:hora|minuto))", str(_NUMEROS[palabra]), t)
+    t = re.sub(r"\b(\d+) horas? y media\b", r"\1 horas 30 minutos", t)
+    t = re.sub(r"\b(\d+) horas? y cuarto\b", r"\1 horas 15 minutos", t)
+    t = re.sub(r"\bhora y media\b", "1 horas 30 minutos", t)
+
+    t = re.sub(r"\b(\d+) coma (\d+)\b", r"\1.\2", t)
+    h = re.search(r"\b(\d+(?:\.\d+)?) horas?\b", t)
+    m = re.search(r"\b(\d+) minutos?\b", t)
+    if not h and not m:
+        return None
+    segundos = 0
+    if h:
+        segundos += float(h.group(1).replace(",", ".")) * 3600
+    if m:
+        segundos += int(m.group(1)) * 60
+    return int(segundos) or None
+
+
+def dia_pasado_en(t, ahora):
+    """El día del que habla, mirando hacia atrás: "el lunes" es el último
+    lunes que ya pasó. Sin día, hoy."""
+    hoy = ahora.date()
+    if re.search(r"\banteayer\b", t):
+        return hoy - timedelta(days=2)
+    if re.search(r"\bayer\b", t):
+        return hoy - timedelta(days=1)
+    for nombre, idx in memoria.DIAS.items():
+        if re.search(rf"\b(?:el|del) {nombre}\b", t):
+            atras = (hoy.weekday() - idx) % 7 or 7     # "el lunes" dicho un lunes: el pasado
+            return hoy - timedelta(days=atras)
+    m = re.search(r"\b(?:el|del) (\d{1,2})(?: de (" + "|".join(MESES) + r"))?\b", t)
+    if m:
+        num = int(m.group(1))
+        if m.group(2):
+            # Con mes: este año, o el pasado si aún no ha llegado
+            mes = MESES.index(m.group(2)) + 1
+            candidatos = [(hoy.year, mes), (hoy.year - 1, mes)]
+        else:
+            # Sin mes: este mes, o el anterior. "El 20" dicho el 16 es el
+            # 20 del mes pasado, no el de hace un año
+            anterior = (hoy.replace(day=1) - timedelta(days=1))
+            candidatos = [(hoy.year, hoy.month), (anterior.year, anterior.month)]
+        for anio, mes in candidatos:
+            try:
+                d = datetime(anio, mes, num).date()
+            except ValueError:
+                continue
+            if d <= hoy:
+                return d
+        return None
+    return hoy
+
+
+# ---------------------------------------------------------------
 # QUÉ PIDE
 # ---------------------------------------------------------------
 
@@ -451,6 +645,29 @@ _PARAR_A = re.compile(
     r"terminamos|hemos terminado)"
     r"(?: de trabajar| de currar)?(?: (?:con|para) [a-z0-9 ]{1,40}?)?"
     r"(?: (?:ayer|hoy))? (?:a las?|sobre las?|hacia las?|a eso de las?) .+$")
+
+# Apuntar a posteriori: un verbo de "trabajé", una duración y un cliente
+_ANADIR = re.compile(r"\b(?:he trabajado|trabaje|he estado trabajando|estuve trabajando|"
+                     r"estuve|he estado|he currado|curre|apunta|apuntame|anade|"
+                     r"anademe|suma|sumale|sumame)\b")
+_RESTAR = re.compile(r"\b(?:quita|quitale|resta|restale|descuenta|descuentale)\b")
+_BORRAR_ULTIMA = re.compile(r"\b(?:borra|borrame|quita|elimina|anula|descarta)"
+                            r"(?: la)? ultima sesion\b")
+
+
+def _cliente_tras(t, preposiciones):
+    """"... para García ayer" -> "garcia": lo que va tras la preposición,
+    cortado donde empieza el día o la duración."""
+    m = None
+    for m in re.finditer(rf"\b(?:{preposiciones}) (?:(?:el|la) )?(?:(?:cliente|empresa|proyecto) )?", t):
+        pass                    # la ÚLTIMA: "he trabajado con calma para Acme"
+    if not m:
+        return None
+    resto = t[m.end():]
+    resto = re.split(r"\b(?:hoy|ayer|anteayer|el|del|esta|este|durante|desde|\d+|una?|dos|tres|"
+                     r"cuatro|cinco|seis|siete|ocho|media)\b", resto)[0].strip()
+    return resto or None
+
 
 _CONSULTA = re.compile(
     r"\b(cuantas horas|cuanto (?:tiempo )?(?:he|llevo|llevamos|hemos) "
@@ -503,6 +720,35 @@ def orden(texto, hay_abierta=False, conocidos=()):
         # por eso se confirma diciendo el nombre en voz alta.
         return ("empezar", cliente)
 
+    if _BORRAR_ULTIMA.search(t):
+        return ("borrar_ultima", None)
+
+    if _RESTAR.search(t):
+        segundos = duracion_en(t)
+        cliente = _cliente_tras(t, "a|de|con|para")
+        if segundos and cliente:
+            return ("restar", (cliente, segundos))
+
+    if _ANADIR.search(t) and not _CONSULTA.search(t):
+        segundos = duracion_en(t)
+        # Tres verbos, tres niveles de exigencia. "Apunta una reunión de 2
+        # horas mañana con Ana" es una TAREA; "he estado dos horas en el
+        # médico" no es trabajo. Sin esto, los dos acababan como horas.
+        if re.search(r"\b(?:trabaje|trabajado|trabajando|curre|currado|currando)\b", t):
+            cliente = _cliente_tras(t, "para|con|a|en")
+        elif re.search(r"\b(?:estuve|he estado)\b", t):
+            cliente = _cliente_tras(t, "para|con")
+            # "Estuve 2 horas con mi madre": solo si es un cliente que ya existe
+            if cliente and cliente_parecido(cliente, conocidos) is None:
+                cliente = None
+        else:
+            # apunta / añade / súmale: "N horas A/PARA alguien", y nada futuro
+            futuro = re.search(r"\b(?:manana|a las?|pasado|que viene|proximo)\b", t)
+            pegado = re.search(r"\b(?:horas?|minutos?) (?:a|para) ", t)
+            cliente = _cliente_tras(t, "a|para") if pegado and not futuro else None
+        if segundos and cliente:
+            return ("anadir", (cliente, segundos, t))
+
     if _EXPORTAR.search(t) and "hora" in t:
         return ("exportar", None)
 
@@ -527,6 +773,15 @@ def responder(accion, dato, texto, ahora=None):
         return empezar(dato, ahora)
     if accion == "parar":
         return parar(ahora)
+    if accion == "anadir":
+        clave, segundos, dicho = dato
+        dia = dia_pasado_en(dicho, ahora)
+        if dia is None:
+            return "No entiendo qué día. Dímelo otra vez."
+        return anadir(clave, segundos, dia, ahora)
+    if accion == "restar":
+        clave, segundos = dato
+        return restar(clave, segundos, ahora)
     if accion == "parar_a":
         s = abierta()
         if not s:

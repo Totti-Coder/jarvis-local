@@ -675,6 +675,30 @@ class Conversacion:
             await self.enviar(tipo="horas", cliente=None, segundos=0)
 
     async def _usar_horas(self, accion, dato, pregunta, conocidos=None):
+        if accion == "borrar_ultima":
+            # Borrar no tiene vuelta atrás: se pregunta enseñando CUÁL es
+            s = await asyncio.to_thread(horas.ultima)
+            if not s:
+                await self.decir_turno("No hay ninguna sesión que borrar.", "horas", pregunta)
+                return
+            self.pendiente["tipo"], self.pendiente["datos"] = "borrar_sesion", s["id"]
+            await self.decir_turno(
+                f"La última es {horas.describir(s, self.ahora())}. ¿La borro?",
+                "confirmar", pregunta)
+            return
+        if accion in ("anadir", "restar"):
+            # Mismo nombre, mismo arreglo que al empezar: "Akme" es Acme
+            dicho = dato[0]
+            conocido = horas.cliente_parecido(dicho, conocidos or {})
+            if conocido is None and accion == "anadir":
+                nombre = horas.nombre_bonito(dicho)
+                self.pendiente["tipo"] = "cliente_nuevo"
+                self.pendiente["datos"] = {"nombre": nombre, "anadir": dato[1:]}
+                await self.decir_turno(
+                    f"No tengo ningún cliente llamado {nombre}. ¿Lo creo y le "
+                    f"apunto {horas.duracion_hablada(dato[1])}?", "horas", pregunta)
+                return
+            dato = (conocido or horas.clave_de(dicho),) + tuple(dato[1:])
         if accion == "empezar":
             # "Akme" es Acme: Whisper no escribe igual un nombre dos veces.
             # Y uno que no se parece a ninguno se confirma antes de crearlo:
@@ -694,15 +718,36 @@ class Conversacion:
         await self.enviar_horas()
         await self.decir_turno(frase, "horas", pregunta)
 
-    async def _crear_cliente(self, nombre, pregunta):
+    async def _crear_cliente(self, datos, pregunta):
+        # Llega el nombre (al empezar) o el nombre y lo que había que apuntar
+        nombre = datos["nombre"] if isinstance(datos, dict) else datos
         if not es_afirmacion(pregunta):
             print(f"[horas] cliente nuevo descartado: {nombre}")
-            await self.decir_turno("Vale, no cuento nada.", None, pregunta)
+            await self.decir_turno("Vale, no apunto nada.", None, pregunta)
+            return
+        if isinstance(datos, dict) and datos.get("anadir"):
+            segundos, dicho = datos["anadir"]
+            dia = horas.dia_pasado_en(dicho, self.ahora()) or self.ahora().date()
+            # Con el nombre como se dijo ("BBVA"), no la clave en minúsculas
+            frase = await asyncio.to_thread(
+                horas.anadir, horas.clave_de(nombre), segundos, dia,
+                self.ahora(), nombre)
+            print(f"[horas] cliente nuevo con horas a mano: {nombre}")
+            await self.decir_turno(frase, "horas", pregunta)
             return
         frase = await asyncio.to_thread(horas.empezar, nombre, self.ahora())
         print(f"[horas] cliente nuevo: {nombre}")
         await self.enviar_horas()
         await self.decir_turno(frase, "horas", pregunta)
+
+    async def _borrar_sesion(self, id_, pregunta):
+        if not es_afirmacion(pregunta):
+            await self.decir_turno("Vale, la dejo.", None, pregunta)
+            return
+        ok = await asyncio.to_thread(horas.borrar_sesion, id_)
+        print(f"[horas] sesión {id_} borrada: {ok}")
+        await self.enviar_horas()
+        await self.decir_turno("Borrada." if ok else "Ya no estaba.", "horas", pregunta)
 
     async def _correr_rutina(self, rutina, pregunta):
         """Los pasos en orden. Si uno falla, los demás siguen y se dice
@@ -788,6 +833,8 @@ class Conversacion:
             await self._confirmar_envio(datos, pregunta)
         elif tipo == "cliente_nuevo":
             await self._crear_cliente(datos, pregunta)
+        elif tipo == "borrar_sesion":
+            await self._borrar_sesion(datos, pregunta)
 
     async def _confirmar_apagado(self, accion, pregunta):
         if es_afirmacion(pregunta):

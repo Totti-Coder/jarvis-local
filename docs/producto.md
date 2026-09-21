@@ -83,7 +83,7 @@ Esta lista pesa tanto como la de funcionalidades.
 | Qué | Hoy |
 |---|---|
 | Acierto del router (elegir la acción correcta) | **97/97** frases reales |
-| Tests | **544 casos**, 426 en el CI |
+| Tests | **602 casos**, 479 en el CI |
 | Latencia de voz a respuesta | **~0,8 s** |
 | APIs de pago | **0** |
 | Conexiones ajenas aceptadas | **0** (antes, todas: [seguridad](seguridad.md)) |
@@ -99,7 +99,9 @@ Esta lista pesa tanto como la de funcionalidades.
   suenan en español** ("Akme" es Acme) y uno nuevo se confirma antes de
   crearlo. Olvidarse de parar es el error más caro, así que la sesión se ve
   siempre en la barra, se recuerda cada 3 horas y, al abrir Jarvis al día
-  siguiente, se avisa. Se cierra a una hora pasada: *"terminé a las 7"*.
+  siguiente, se avisa. Se cierra a una hora pasada: *"terminé a las 7"*. Y
+  lo olvidado se corrige hablando: *"ayer trabajé 2 horas para García"*,
+  *"quítale media hora a Acme"*, *"borra la última sesión"* (con pregunta).
 - **Rutinas por voz.** *"Modo trabajo"* abre tus programas, cierra
   distracciones, pone el cronómetro y empieza a contar horas. **Hipótesis:**
   es lo que más se nota en el día a día. El riesgo es bajo porque una rutina

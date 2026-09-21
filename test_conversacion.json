@@ -882,7 +882,7 @@
   ],
   [
    "token",
-   "Vale, no cuento nada."
+   "Vale, no apunto nada."
   ],
   [
    "estado",
@@ -1039,6 +1039,144 @@
   [
    "token",
    "Terminado con Acme: menos de un minuto."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "horas_anade": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "horas",
+   null
+  ],
+  [
+   "herramienta",
+   "horas"
+  ],
+  [
+   "token",
+   "Apuntadas 2 horas para Acme ayer."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "horas_anade_nuevo": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "horas"
+  ],
+  [
+   "token",
+   "No tengo ningún cliente llamado Iberdrola. ¿Lo creo y le apunto 3 horas?"
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "horas_anade_nuevo_si": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "horas"
+  ],
+  [
+   "token",
+   "Apuntadas 3 horas para Iberdrola ayer."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "horas_borrar_pregunta": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "confirmar"
+  ],
+  [
+   "token",
+   "La última es Iberdrola, 3 horas apuntadas a mano ayer. ¿La borro?"
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "horas_borrar_si": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "horas",
+   null
+  ],
+  [
+   "herramienta",
+   "horas"
+  ],
+  [
+   "token",
+   "Borrada."
   ],
   [
    "estado",

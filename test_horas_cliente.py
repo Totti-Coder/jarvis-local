@@ -310,6 +310,115 @@ with tempfile.TemporaryDirectory() as tmp:
         celda = list(csv.reader(fh, delimiter=";"))[1][0]
     comprueba("una celda que empieza por = se neutraliza", celda.startswith("'="), celda)
 
+print("\n" + "=" * 72)
+print("CORREGIR: APUNTAR, RESTAR, BORRAR")
+print("=" * 72)
+for dicho, esperado in [
+    ("2 horas", 7200), ("dos horas y media", 9000), ("una hora y media", 5400),
+    ("hora y media", 5400), ("media hora", 1800), ("tres cuartos de hora", 2700),
+    ("cuarenta y cinco minutos", 2700), ("1 hora y 20 minutos", 4800),
+    ("un cuarto de hora", 900), ("3,5 horas", 12600), ("sin duración", None),
+]:
+    r = horas.duracion_en(horas._normal(dicho))
+    comprueba(f"{dicho!r:<28} -> {r}", r == esperado, f"esperaba {esperado}")
+
+MIERCOLES = datetime(2026, 9, 16, 17, 0)
+for dicho, esperado in [
+    ("hoy", "16/09"), ("", "16/09"), ("ayer", "15/09"), ("anteayer", "14/09"),
+    ("el lunes", "14/09"), ("el miercoles", "09/09"),     # dicho un miércoles: el pasado
+    ("del lunes", "14/09"), ("el 3", "03/09"),
+    ("el 20", "20/08"),                                  # sin mes: el del mes pasado
+    ("el 20 de agosto", "20/08"), ("el 31", "31/08"),
+]:
+    r = horas.dia_pasado_en(horas._normal(dicho), MIERCOLES)
+    comprueba(f"{dicho!r:<20} -> {r:%d/%m}", f"{r:%d/%m}" == esperado, f"esperaba {esperado}")
+
+C2 = {"acme": "Acme", "garcia": "García"}
+for frase, esperado in [
+    ("Ayer trabajé 2 horas para García",           ("anadir", "garcia", 7200)),
+    ("He estado trabajando hora y media con Acme", ("anadir", "acme", 5400)),
+    ("El lunes estuve tres horas con Acme",        ("anadir", "acme", 10800)),
+    ("Apunta 2 horas a Acme",                      ("anadir", "acme", 7200)),
+    ("Súmale media hora a García",                 ("anadir", "garcia", 1800)),
+    ("Apúntame 45 minutos para García del lunes",  ("anadir", "garcia", 2700)),
+    ("Ayer trabajé 3 horas para Iberdrola",        ("anadir", "iberdrola", 10800)),
+    ("Quítale media hora a Acme",                  ("restar", "acme", 1800)),
+    ("Réstale 20 minutos a García",                ("restar", "garcia", 1200)),
+    ("Borra la última sesión",                     ("borrar_ultima", None, None)),
+]:
+    r = horas.orden(frase, False, C2)
+    obtenido = (r[0], r[1][0], r[1][1]) if r and r[1] else (r[0], None, None) if r else None
+    comprueba(f"{frase!r:<46} -> {obtenido}", obtenido == esperado, f"esperaba {esperado}")
+
+print("\n  lo que NO es corregir horas:")
+for frase in [
+    "Apunta una reunión de 2 horas mañana con Ana",   # es una tarea
+    "Apunta 2 horas a Acme para mañana",              # futuro: tarea
+    "He estado dos horas en el médico",               # no es trabajo
+    "Estuve dos horas con mi madre",                  # ni cliente conocido
+    "Recuérdame llamar a Ana en 2 horas",
+    "Añade comprar leche a la lista",
+    "Quita el dentista del 1 de septiembre",          # borrar tarea, no horas
+    "Borra la última tarea",
+]:
+    r = horas.orden(frase, False, C2)
+    comprueba(f"{frase!r:<46} -> nada", r is None, str(r))
+
+with memoria._conectar() as con:
+    con.execute("DELETE FROM sesiones")
+H = datetime(2026, 9, 16, 17, 0)
+horas.empezar("acme", datetime(2026, 9, 16, 9, 0))
+horas.parar(datetime(2026, 9, 16, 12, 0))                 # 3 h
+f = horas.responder("anadir", ("garcia", 7200, "ayer trabaje 2 horas para garcia"), "", H)
+comprueba("apuntar a mano: lo repite con el día", f == "Apuntadas 2 horas para Garcia ayer.", f)
+comprueba("y cuenta en el día que se dijo",
+          horas.totales(datetime(2026, 9, 15), datetime(2026, 9, 16), H)["garcia"][1] == 7200)
+f = horas.anadir("acme", 20 * 3600, H.date(), H)
+comprueba("20 horas en un día no se apuntan: se pide repetir",
+          "Me parece mucho" in f and len(horas.sesiones(H.replace(hour=0), H, H)) == 1, f)
+
+f = horas.responder("restar", ("acme", 1800), "", H)
+comprueba("restar recorta la última sesión de ese cliente",
+          f == "Quitadas 30 minutos a Acme. Su última sesión queda en 2 horas y media.", f)
+f = horas.restar("acme", 5 * 3600, H)
+comprueba("restar más de lo que dura no toca nada",
+          "solo tiene 2 horas y media" in f, f)
+comprueba("restar a quien no existe", horas.restar("zzz", 60, H) == "No tengo horas con Zzz.")
+
+horas.empezar("acme", datetime(2026, 9, 16, 15, 0))
+horas.restar("acme", 1800, H)
+comprueba("restar a una abierta retrasa su inicio (2 h -> 1 h y media)",
+          horas.abierta()["inicio"] == datetime(2026, 9, 16, 15, 30))
+
+u = horas.ultima()
+comprueba("la última se describe para reconocerla",
+          horas.describir(u, H) == "Acme, en marcha desde a las 3 y media de la tarde",
+          horas.describir(u, H))
+comprueba("y se borra", horas.borrar_sesion(u["id"]) and horas.abierta() is None)
+comprueba("borrar dos veces no rompe", not horas.borrar_sesion(u["id"]))
+u = horas.ultima()
+comprueba("una manual se describe como manual",
+          horas.describir(u, H) == "Garcia, 2 horas apuntadas a mano ayer", horas.describir(u, H))
+
+with tempfile.TemporaryDirectory() as tmp:
+    ruta = Path(tmp) / "h.csv"
+    horas.exportar_csv(datetime(2026, 9, 15), datetime(2026, 9, 16), ruta, H)
+    with open(ruta, encoding="utf-8-sig", newline="") as fh:
+        fila = list(csv.reader(fh, delimiter=";"))[1]
+    comprueba("en el CSV, la manual sin horas inventadas",
+              fila == ["Garcia", "15/09/2026", "", "(apuntada a mano)", "2,00"], fila)
+
+# Una base de datos de antes de esta versión, sin la columna "manual"
+with memoria._conectar() as con:
+    con.execute("DROP TABLE sesiones")
+    con.execute("CREATE TABLE sesiones (id INTEGER PRIMARY KEY, cliente TEXT NOT NULL, "
+                "clave TEXT NOT NULL, inicio TEXT NOT NULL, fin TEXT)")
+    con.execute("INSERT INTO sesiones (cliente, clave, inicio, fin) VALUES "
+                "('Acme', 'acme', '2026-09-16T09:00:00', '2026-09-16T10:00:00')")
+horas.preparar()
+comprueba("una base de datos vieja se migra sin perder sesiones",
+          horas.totales(datetime(2026, 9, 16), datetime(2026, 9, 17), H)["acme"][1] == 3600)
+
 os.remove(memoria.BASE)
 
 print("\n" + "=" * 72)

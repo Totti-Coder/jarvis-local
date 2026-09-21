@@ -171,6 +171,12 @@ ESCENARIOS = [
     ("horas_consulta",      "¿Cuántas horas llevo este mes?", (None, None), None),
     ("rutina",              "Pon el modo trabajo",          (None, None), None),
     ("horas_termina",       "He terminado",                 ("completar_tarea", {"texto": "lo"}), None),
+    # Corregir: apuntar lo que se olvidó fichar, y borrar con pregunta
+    ("horas_anade",         "Ayer trabajé 2 horas para Acme", (None, None), None),
+    ("horas_anade_nuevo",   "Ayer trabajé 3 horas para Iberdrola", (None, None), None),
+    ("horas_anade_nuevo_si", "sí",                          (None, None), ("cliente_nuevo", {"nombre": "Iberdrola", "anadir": (10800, "ayer trabaje 3 horas para iberdrola")})),
+    ("horas_borrar_pregunta", "Borra la última sesión",     (None, None), None),
+    ("horas_borrar_si",     "sí",                           (None, None), ("borrar_sesion", "la ultima")),
 ]
 
 # El reloj de los escenarios. Sin fijarlo, "el 1 de septiembre" seria de
@@ -272,6 +278,9 @@ async def un_turno(escenario):
                               "datos": {"propias": [], "fuera": ["e1", "e2"]}}
         elif tipo == "cliente_nuevo":
             conv.pendiente = {"tipo": "cliente_nuevo", "datos": datos}
+        elif tipo == "borrar_sesion":
+            conv.pendiente = {"tipo": "borrar_sesion",
+                              "datos": servidor.horas.ultima()["id"]}
         elif tipo == "correo":
             conv.pendiente = {"tipo": "correo", "datos": {
                 "email": "ana@ejemplo.com", "nombre": "Ana",
