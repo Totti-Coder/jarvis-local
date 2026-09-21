@@ -340,8 +340,17 @@ NOMBRES_PROCESO = {
     "musica": ["spotify.exe"],
     "administrador de tareas": ["taskmgr.exe"],
     "paint": ["mspaint.exe"],
-    "smite": ["smite.exe", "smite2.exe", "hirez.exe"],
-    "juego": ["smite.exe", "smite2.exe"],
+    # SMITE 2 se llama por dentro "Hemingway": el proceso del juego es
+    # Hemingway-Win64-Shipping.exe, y Hemingway.exe el que lo arranca.
+    # Buscando "smite.exe" (el de SMITE 1) no se encontraba nada.
+    "smite": ["hemingway-win64-shipping.exe", "hemingway.exe",
+              "smite.exe", "smite2.exe"],
+    # Roblox abre dos procesos: el juego y RobloxCrashHandler. Los dos
+    # contienen "roblox", y sin esto se cerraba el primero de la lista,
+    # que podía ser el del informe de errores y no el juego
+    "roblox": ["robloxplayerbeta.exe", "robloxstudiobeta.exe"],
+    "juego": ["hemingway-win64-shipping.exe", "robloxplayerbeta.exe",
+              "smite.exe", "smite2.exe"],
 }
 
 
@@ -374,18 +383,15 @@ def procesos_abiertos():
     return salida
 
 
-def cerrar_programa(nombre):
-    """Cierra un programa por su nombre. Educadamente, sin forzar."""
-    if not ES_WINDOWS:
-        return "Cerrar programas solo está hecho para Windows."
+def proceso_a_cerrar(nombre, abiertos):
+    """(nombre dicho, proceso) que cerraría, o None si no hay ninguno.
 
+    Separado de cerrar_programa para poder probarlo sin cerrar nada: con
+    una lista de procesos inventada, o mirando los de verdad sin tocarlos.
+    """
     n = _sin_tildes(nombre).strip()
     if not n:
-        return "No he entendido qué cerrar."
-
-    abiertos = procesos_abiertos()
-    if not abiertos:
-        return "No he podido ver qué hay abierto."
+        return None
 
     # Primero el mapa de nombres en español: "calculadora" -> CalculatorApp.exe
     por_exe = {v.lower(): (k, v) for k, v in abiertos.items()}
@@ -393,28 +399,38 @@ def cerrar_programa(nombre):
         if clave == n or clave in n or n in clave:
             for exe in exes:
                 if exe in por_exe:
-                    elegido = clave
-                    proceso = por_exe[exe][1]
-                    if proceso.lower() in INTOCABLES:
-                        return f"No voy a cerrar {proceso}: el sistema lo necesita."
-                    return _cerrar(elegido, proceso)
+                    return clave, por_exe[exe][1]
 
     # Si no, se busca por palabras con contenido, como al abrir
     palabras = _utiles(n)
     exacto = abiertos.get(n)
     if exacto:
-        elegido, proceso = n, exacto
-    else:
-        elegido, proceso, puntos = None, None, 0
-        for corto, exe in abiertos.items():
-            comunes = len(palabras & _utiles(corto)) if palabras else 0
-            if corto in n or n in corto:
-                comunes += 1
-            if comunes > puntos:
-                elegido, proceso, puntos = corto, exe, comunes
-        if not proceso:
-            return f"No veo {nombre} abierto ahora mismo."
+        return n, exacto
+    elegido, proceso, puntos = None, None, 0
+    for corto, exe in abiertos.items():
+        comunes = len(palabras & _utiles(corto)) if palabras else 0
+        if corto in n or n in corto:
+            comunes += 1
+        if comunes > puntos:
+            elegido, proceso, puntos = corto, exe, comunes
+    return (elegido, proceso) if proceso else None
 
+
+def cerrar_programa(nombre):
+    """Cierra un programa por su nombre. Educadamente, sin forzar."""
+    if not ES_WINDOWS:
+        return "Cerrar programas solo está hecho para Windows."
+    if not _sin_tildes(nombre).strip():
+        return "No he entendido qué cerrar."
+
+    abiertos = procesos_abiertos()
+    if not abiertos:
+        return "No he podido ver qué hay abierto."
+
+    elegido = proceso_a_cerrar(nombre, abiertos)
+    if not elegido:
+        return f"No veo {nombre} abierto ahora mismo."
+    elegido, proceso = elegido
     if proceso.lower() in INTOCABLES:
         return f"No voy a cerrar {proceso}: el sistema lo necesita."
     return _cerrar(elegido, proceso)

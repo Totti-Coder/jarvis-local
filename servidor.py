@@ -789,8 +789,12 @@ class Conversacion:
                     if not r.startswith("Abriendo"):
                         fallos.append(f"abrir {valor}")
                 elif tipo == "cerrar":
-                    # Si ya estaba cerrado, mejor: no es un fallo
-                    await asyncio.to_thread(sistema.cerrar_programa, valor)
+                    # Si ya estaba cerrado, mejor: no es un fallo. Pero si
+                    # Windows se niega a cerrarlo, sí: antes salía ✓ en el
+                    # panel con el juego todavía abierto
+                    r = await asyncio.to_thread(sistema.cerrar_programa, valor)
+                    if r.startswith(("No he podido", "No voy a")):
+                        fallos.append(f"cerrar {valor}")
                 elif tipo == "atajo":
                     r = await asyncio.to_thread(sistema.ejecutar_atajo, valor)
                     if r.startswith(("No conozco", "No encuentro", "No he podido",

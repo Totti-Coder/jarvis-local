@@ -118,6 +118,28 @@ comprueba("todos los pasos de una rutina cargada tienen etiqueta",
           all(rutinas.etiqueta(t, v) for r in cargadas for t, v in r["pasos"]))
 
 print("\n" + "=" * 72)
+print("QUÉ PROCESO CIERRA \"CERRAR ROBLOX\" O \"CERRAR SMITE\"")
+print("=" * 72)
+import sistema  # noqa: E402
+
+# Lo que devuelve tasklist con los dos juegos abiertos (sin tocar ninguno)
+ABIERTOS = {sistema._sin_tildes(e.rsplit(".", 1)[0]): e for e in [
+    "RobloxCrashHandler.exe", "RobloxPlayerBeta.exe",       # este orden: el
+    "start_protected_game.exe", "Hemingway.exe",           # informe primero
+    "Hemingway-Win64-Shipping.exe", "Discord.exe", "chrome.exe"]}
+for dicho, esperado in [
+    ("roblox", "RobloxPlayerBeta.exe"),          # el juego, no el CrashHandler
+    ("smite", "Hemingway-Win64-Shipping.exe"),   # SMITE 2 por dentro es Hemingway
+    ("smitegame", "Hemingway-Win64-Shipping.exe"),
+    ("smite 2", "Hemingway-Win64-Shipping.exe"),
+    ("discord", "Discord.exe"),
+]:
+    r = sistema.proceso_a_cerrar(dicho, ABIERTOS)
+    comprueba(f"{dicho!r:<12} -> {r and r[1]}", r and r[1] == esperado, f"esperaba {esperado}")
+comprueba("un juego que no está abierto: nada que cerrar",
+          sistema.proceso_a_cerrar("smite", {"chrome": "chrome.exe"}) is None)
+
+print("\n" + "=" * 72)
 print(f"  {'TODO BIEN' if not fallos else str(len(fallos)) + ' FALLOS'}")
 print("=" * 72)
 sys.exit(1 if fallos else 0)
