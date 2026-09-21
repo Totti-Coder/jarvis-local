@@ -166,6 +166,11 @@ class Conversacion:
         self.ahora = datetime.now
         # Uno por pestaña, como el historial: el panel lo pinta esta página
         self.crono = cronometro.Cronometro()
+        # Lo último que se mandó del fichaje: solo se reenvía si cambia. No
+        # empieza en None porque None es "sin sesión": la primera vez no se
+        # mandaría, y tras reiniciar el servidor la pestaña seguiría
+        # enseñando una sesión que ya no existe
+        self.horas_enviadas = "sin enviar"
 
         # Se fija en correr(), que es cuando hay bucle de asyncio
         self.bucle_principal = None
@@ -185,6 +190,7 @@ class Conversacion:
             # Tras reiniciar el servidor la pestaña sigue enseñando el panel
             # de antes, contando un tiempo que ya no existe: se le corrige
             await self.enviar(tipo="crono", **self.crono.estado())
+            await self.enviar_horas()
 
             await self.enviar(tipo="estado", valor="inactivo")
 
@@ -192,6 +198,11 @@ class Conversacion:
             # una libreta (hay que ir a mirarla) y algo que de verdad te recuerda
             # las cosas. Si no hay nada apuntado, no dice nada.
             resumen = await asyncio.to_thread(memoria.resumen_del_dia)
+            # Una sesión de horas olvidada desde otro día va delante de todo:
+            # cada hora que pasa sin cerrarla es una hora mal facturada
+            olvido = await asyncio.to_thread(horas.aviso_al_entrar)
+            if olvido:
+                resumen = f"{olvido} {resumen}" if resumen else olvido
             if resumen:
                 await self.enviar(tipo="saludo", texto=resumen)
                 await self.enviar(tipo="estado", valor="hablando")
@@ -649,6 +660,20 @@ class Conversacion:
         await self.enviar(tipo="crono", **self.crono.estado())
         await self.decir_turno(frase, "cronómetro", pregunta)
 
+    async def enviar_horas(self, forzar=False):
+        """El fichaje en marcha, para el indicador de la barra. La página
+        sigue contando sola; esto solo se manda cuando algo cambia."""
+        s = await asyncio.to_thread(horas.abierta)
+        estado = (s["id"], s["cliente"]) if s else None
+        if estado == self.horas_enviadas and not forzar:
+            return
+        self.horas_enviadas = estado
+        if s:
+            await self.enviar(tipo="horas", cliente=s["cliente"],
+                              segundos=(self.ahora() - s["inicio"]).total_seconds())
+        else:
+            await self.enviar(tipo="horas", cliente=None, segundos=0)
+
     async def _usar_horas(self, accion, dato, pregunta, conocidos=None):
         if accion == "empezar":
             # "Akme" es Acme: Whisper no escribe igual un nombre dos veces.
@@ -666,6 +691,7 @@ class Conversacion:
         frase = await asyncio.to_thread(horas.responder, accion, dato,
                                         pregunta, self.ahora())
         print(f"[horas] {accion} {dato or ''}".rstrip())
+        await self.enviar_horas()
         await self.decir_turno(frase, "horas", pregunta)
 
     async def _crear_cliente(self, nombre, pregunta):
@@ -675,6 +701,7 @@ class Conversacion:
             return
         frase = await asyncio.to_thread(horas.empezar, nombre, self.ahora())
         print(f"[horas] cliente nuevo: {nombre}")
+        await self.enviar_horas()
         await self.decir_turno(frase, "horas", pregunta)
 
     async def _correr_rutina(self, rutina, pregunta):
@@ -711,6 +738,7 @@ class Conversacion:
                 print(f"[rutina] {rutina['nombre']}: {tipo} {valor!r} -> {e}")
                 fallos.append(f"{tipo} {valor}")
 
+        await self.enviar_horas()
         frase = rutina["dice"]
         if fallos:
             frase += f" No he podido: {', '.join(fallos)}."
@@ -1365,6 +1393,20 @@ class Conversacion:
                 print(f"[avisos] {frase}")
                 await self.decir_suelto(frase, "recordatorio")
                 break          # de uno en uno: si hay otro, en la siguiente vuelta
+            else:
+                # Sin nada de la agenda, lo de las horas: una sesión que
+                # lleva abierta 3 h, 6 h... Misma tabla de avisos, así que
+                # con dos pestañas solo lo dice una, y cada tramo una vez
+                try:
+                    await self.enviar_horas()      # por si cambió en otra pestaña
+                    r = await asyncio.to_thread(horas.recordatorio, self.ahora())
+                    if (r and not self.grabando and self.estado == "inactivo"
+                            and not self.pendiente["tipo"]
+                            and await asyncio.to_thread(memoria.marcar_avisado, r[0])):
+                        print(f"[horas] {r[1]}")
+                        await self.decir_suelto(r[1], "horas")
+                except Exception as e:
+                    print(f"[horas] no se pudo mirar la sesión: {e}")
 
     async def vigilar_limite(self):
         """Corta sola la grabación a los MAX_GRABACION_S segundos."""

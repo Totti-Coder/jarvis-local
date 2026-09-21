@@ -44,6 +44,11 @@ MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
 # Una sesión abierta más de esto casi seguro es un olvido: se avisa al cerrarla
 SESION_SOSPECHOSA_H = 12
 
+# Cada cuánto se recuerda que sigue abierta (3 h, 6 h, 9 h...). Olvidarse de
+# parar es el error más caro: infla la factura o, si se nota, obliga a
+# reconstruir la jornada de memoria.
+RECORDAR_CADA_H = 3
+
 # Parecido mínimo para dar por hecho que "Akme" es Acme. Por debajo, se
 # pregunta si es un cliente nuevo. Medido en test_horas_cliente.py
 PARECIDO_MIN = 0.8
@@ -199,12 +204,12 @@ def empezar(cliente, ahora=None):
     return frase + f"Empiezo a contar para {nombre}."
 
 
-def _cerrar(sesion, ahora):
+def _cerrar(sesion, fin):
     """Cierra la sesión y devuelve cuánto duró, dicho."""
     with memoria._conectar() as con:
         con.execute("UPDATE sesiones SET fin = ? WHERE id = ?",
-                    (ahora.isoformat(), sesion["id"]))
-    segundos = (ahora - sesion["inicio"]).total_seconds()
+                    (fin.isoformat(), sesion["id"]))
+    segundos = (fin - sesion["inicio"]).total_seconds()
     dicho = duracion_hablada(segundos)
     if segundos > SESION_SOSPECHOSA_H * 3600:
         dicho += (". Ojo, ha estado abierta mucho tiempo: si se te olvidó "
@@ -212,12 +217,93 @@ def _cerrar(sesion, ahora):
     return dicho
 
 
-def parar(ahora=None):
+def parar(ahora=None, fin=None):
+    """Cierra la sesión abierta, ahora o a la hora que se diga."""
     ahora = ahora or datetime.now()
     s = abierta()
     if not s:
         return "No estabas contando horas para nadie."
-    return f"Terminado con {s['cliente']}: {_cerrar(s, ahora)}."
+    if fin is None:
+        return f"Terminado con {s['cliente']}: {_cerrar(s, ahora)}."
+    # La hora se repite al decirlo: si se entendió "las 7 de la mañana"
+    # donde se quería "de la tarde", se oye en el acto
+    return (f"Terminado con {s['cliente']} {momento_hablado(fin, ahora)}: "
+            f"{_cerrar(s, fin)}.")
+
+
+def momento_hablado(momento, ahora):
+    """"a las 7 de la tarde", o "ayer a las 7 de la tarde"."""
+    hora = memoria.hora_hablada(momento.hour, momento.minute)
+    dias = (ahora.date() - momento.date()).days
+    if dias == 0:
+        return hora
+    if dias == 1:
+        return f"ayer {hora}"
+    return f"el {memoria.DIAS_ES[momento.weekday()]} {hora}"
+
+
+def fin_dicho(texto, inicio, ahora):
+    """"Terminé a las 7" -> el momento, MIRANDO HACIA ATRÁS.
+
+    El intérprete de la agenda lleva "a las 7" al futuro, que es lo que
+    toca al apuntar una tarea. Aquí es al revés: se terminó en algún
+    momento entre el inicio de la sesión y ahora.
+
+    Si caben varias lecturas (las 7 de ayer por la tarde y las 7 de esta
+    mañana), gana LA PRIMERA tras el inicio: quien olvidó parar suele
+    darse cuenta tarde, no a la media hora. Y se repite en voz alta.
+    """
+    t = memoria._sin_tildes(texto)
+    hora = memoria._buscar_hora(t)
+    if not hora:
+        return None
+    h, mi = hora[0], hora[1]
+    ambigua = hora[2] if len(hora) > 2 else False
+    lecturas = {h, (h + 12) % 24} if ambigua else {h}
+
+    dias = [inicio.date() + timedelta(days=i)
+            for i in range((ahora.date() - inicio.date()).days + 1)]
+    if re.search(r"\bayer\b", t):
+        dias = [d for d in dias if d == ahora.date() - timedelta(days=1)]
+    elif re.search(r"\bhoy\b", t):
+        dias = [d for d in dias if d == ahora.date()]
+
+    candidatos = sorted(
+        datetime.combine(d, datetime.min.time()).replace(hour=x, minute=mi)
+        for d in dias for x in lecturas)
+    validos = [c for c in candidatos if inicio < c <= ahora]
+    return validos[0] if validos else None
+
+
+def recordatorio(ahora=None):
+    """(clave, frase) si toca recordar que hay una sesión abierta, o None.
+
+    La clave va a la tabla de avisos: con dos pestañas abiertas, solo una
+    lo dice, y cada tramo (3 h, 6 h...) se dice una vez.
+    """
+    ahora = ahora or datetime.now()
+    s = abierta()
+    if not s:
+        return None
+    tramos = int((ahora - s["inicio"]).total_seconds() // (RECORDAR_CADA_H * 3600))
+    if tramos < 1:
+        return None
+    lleva = duracion_hablada((ahora - s["inicio"]).total_seconds())
+    return (f"h:{s['id']}:{tramos}",
+            f"Sigues contando horas para {s['cliente']}: llevas {lleva}. "
+            f"Si ya habías terminado, dime a qué hora, por ejemplo: "
+            f"terminé a las 7.")
+
+
+def aviso_al_entrar(ahora=None):
+    """Si al abrir Jarvis sigue abierta una sesión de otro día, se dice."""
+    ahora = ahora or datetime.now()
+    s = abierta()
+    if not s or s["inicio"].date() >= ahora.date():
+        return None
+    return (f"Ojo: la sesión de {s['cliente']} sigue abierta desde "
+            f"{momento_hablado(s['inicio'], ahora)}. Si terminaste antes, "
+            f"dime a qué hora.")
 
 
 def sesiones(desde, hasta, ahora=None):
@@ -352,9 +438,19 @@ _EMPEZAR = re.compile(
 _PARAR = re.compile(
     r"^(?:vale |venga |jarvis |oye |ya )*"
     r"(?:termino|terminamos|he terminado|hemos terminado|acabo|he acabado|"
+    r"termine|acabe|pare|lo deje|"
     r"paro|dejo|deja de contar|para de contar|cierra la sesion|fin de la jornada)"
     r"(?: de trabajar| de currar| de contar| horas)?"
     r"(?: (?:con|para) .{1,40}| por hoy| la jornada| por ahora)?$")
+
+# "Terminé a las 7", "he acabado con Acme a las 6 de la tarde", "paré ayer
+# a las 8": cerrar a una hora pasada. Es lo que arregla un olvido.
+_PARAR_A = re.compile(
+    r"^(?:vale |venga |jarvis |oye |ya |pues |no )*"
+    r"(?:termine|he terminado|acabe|he acabado|pare|lo deje|deje de trabajar|"
+    r"terminamos|hemos terminado)"
+    r"(?: de trabajar| de currar)?(?: (?:con|para) [a-z0-9 ]{1,40}?)?"
+    r"(?: (?:ayer|hoy))? (?:a las?|sobre las?|hacia las?|a eso de las?) .+$")
 
 _CONSULTA = re.compile(
     r"\b(cuantas horas|cuanto (?:tiempo )?(?:he|llevo|llevamos|hemos) "
@@ -417,6 +513,8 @@ def orden(texto, hay_abierta=False, conocidos=()):
         return ("actual", None)
 
     # Parar solo con algo abierto: sin eso "he terminado" es otra cosa
+    if hay_abierta and _PARAR_A.match(t):
+        return ("parar_a", None)
     if hay_abierta and _PARAR.match(t):
         return ("parar", None)
     return None
@@ -429,6 +527,15 @@ def responder(accion, dato, texto, ahora=None):
         return empezar(dato, ahora)
     if accion == "parar":
         return parar(ahora)
+    if accion == "parar_a":
+        s = abierta()
+        if not s:
+            return "No estabas contando horas para nadie."
+        fin = fin_dicho(texto, s["inicio"], ahora)
+        if fin is None:
+            return (f"Esa hora no me cuadra: la sesión de {s['cliente']} empezó "
+                    f"{momento_hablado(s['inicio'], ahora)}. Dime otra hora.")
+        return parar(ahora, fin)
     if accion == "actual":
         s = abierta()
         return (f"Llevas {duracion_hablada((ahora - s['inicio']).total_seconds())} "

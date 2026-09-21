@@ -43,6 +43,16 @@ body{
 }
 .barra b{color:var(--acento);font-weight:500;transition:color .4s}
 
+/* Fichaje en marcha: siempre a la vista, porque una sesión olvidada es
+   una hora mal facturada. Ámbar, como todo lo que viene de la agenda. */
+.fichaje{margin-left:18px;color:var(--ambar);letter-spacing:.2em;
+  font-variant-numeric:tabular-nums}
+.fichaje[hidden]{display:none}
+.fichaje::before{content:'';display:inline-block;width:6px;height:6px;
+  border-radius:50%;background:var(--ambar);margin-right:8px;
+  vertical-align:middle;box-shadow:0 0 8px var(--ambar);
+  animation:parpadeo 2s steps(2) infinite}
+
 .telemetria{display:flex;gap:22px;letter-spacing:.16em;font-size:11px}
 .telemetria span::before{content:'';display:inline-block;
   width:5px;height:5px;border-radius:50%;
@@ -248,7 +258,8 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 <body>
 
 <header class="barra">
-  <span>Jarvis · <b id="conexion">conectando</b></span>
+  <span>Jarvis · <b id="conexion">conectando</b><span class="fichaje" id="fichaje"
+        hidden role="status" aria-live="polite"></span></span>
   <nav class="telemetria" aria-label="Estado del sistema">
     <span id="t-oido">Oído</span>
     <span id="t-modelo">Modelo</span>
@@ -531,7 +542,33 @@ const alMensaje = ev => {
   else if (m.tipo === 'borrador_cerrar') cerrarBorrador();
   else if (m.tipo === 'borrador_error')  mostrarAviso(m.texto);
   else if (m.tipo === 'crono')           pintarCrono(m);
+  else if (m.tipo === 'horas')           pintarFichaje(m);
 };
+
+/* ---------- fichaje (horas por cliente) ----------
+   Igual que el cronómetro: llega "Acme, lleva N segundos" y a partir de
+   ahí se cuenta aquí. Al minuto: en horas de trabajo no hace falta más. */
+
+const fichaje = document.getElementById('fichaje');
+let fichajeBase = 0, fichajeDesde = 0, fichajeCliente = null, fichajeReloj = null;
+
+function tickFichaje() {
+  const s = fichajeBase + (performance.now() - fichajeDesde) / 1000;
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+  fichaje.textContent = `${fichajeCliente} · ${h}:${String(m).padStart(2, '0')}`;
+  fichaje.title = `Contando horas para ${fichajeCliente}`;
+}
+
+function pintarFichaje(m) {
+  clearInterval(fichajeReloj);
+  fichajeCliente = m.cliente;
+  fichaje.hidden = !m.cliente;
+  if (!m.cliente) return;
+  fichajeBase = m.segundos || 0;
+  fichajeDesde = performance.now();
+  tickFichaje();
+  fichajeReloj = setInterval(tickFichaje, 1000);
+}
 
 /* ---------- cronómetro ----------
    El tiempo lo lleva el servidor. Llega "lleva X segundos y está en

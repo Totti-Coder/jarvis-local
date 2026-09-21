@@ -102,6 +102,8 @@ def resumir(mensajes):
             salida.append(("estado", m.get("valor")))
         elif t == "herramienta":
             salida.append(("herramienta", m.get("nombre")))
+        elif t == "horas":
+            salida.append(("horas", m.get("cliente")))
         elif t == "crono":
             salida.append(("crono", m.get("visible"), m.get("corriendo"),
                            m.get("segundos")))

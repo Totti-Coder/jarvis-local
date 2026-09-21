@@ -211,6 +211,84 @@ f = horas.parar(datetime(2026, 9, 19, 11, 0))
 comprueba("una sesión olvidada abierta toda la noche se avisa", "Ojo" in f, f)
 
 print("\n" + "=" * 72)
+print("SESIÓN OLVIDADA: \"TERMINÉ A LAS 7\"")
+print("=" * 72)
+for frase, abierta, esperado in [
+    ("Terminé a las 7",                                True,  ("parar_a", None)),
+    ("He terminado con Acme a las 6 de la tarde",      True,  ("parar_a", None)),
+    ("Pues terminé ayer a las 8",                      True,  ("parar_a", None)),
+    ("He terminado",                                   True,  ("parar", None)),
+    ("Terminé",                                        True,  ("parar", None)),
+    ("Terminé a las 7",                                False, None),   # nada abierto
+]:
+    r = horas.orden(frase, abierta, {"acme": "Acme"})
+    comprueba(f"{frase!r:<46} abierta={abierta} -> {r}", r == esperado, f"esperaba {esperado}")
+
+INICIO = datetime(2026, 9, 16, 16, 0)
+for frase, ahora, esperado in [
+    # el mismo día: "a las 7" son las 19:00, las 7:00 fueron antes de empezar
+    ("terminé a las 7",              datetime(2026, 9, 16, 21, 0), "16/09 19:00"),
+    ("terminé a las 18:30",          datetime(2026, 9, 16, 21, 0), "16/09 18:30"),
+    # a la mañana siguiente: la PRIMERA tras el inicio, no las 7 de hoy
+    ("terminé a las 7",              datetime(2026, 9, 17, 9, 30), "16/09 19:00"),
+    ("terminé ayer a las 8 de la tarde", datetime(2026, 9, 17, 9, 30), "16/09 20:00"),
+    ("terminé hoy a las 7",          datetime(2026, 9, 17, 9, 30), "17/09 07:00"),
+    # antes de empezar o todavía por llegar: no cuadra
+    ("terminé a las 3",              datetime(2026, 9, 16, 21, 0), None),
+    ("terminé a las 22:00",          datetime(2026, 9, 16, 21, 0), None),
+    ("terminé",                      datetime(2026, 9, 16, 21, 0), None),
+]:
+    r = horas.fin_dicho(frase, INICIO, ahora)
+    obtenido = f"{r:%d/%m %H:%M}" if r else None
+    comprueba(f"{frase!r:<36} a las {ahora:%d/%m %H:%M} -> {obtenido}",
+              obtenido == esperado, f"esperaba {esperado}")
+
+with memoria._conectar() as con:
+    con.execute("DELETE FROM sesiones")
+horas.empezar("acme", INICIO)
+f = horas.responder("parar_a", None, "terminé a las 7", datetime(2026, 9, 17, 9, 30))
+comprueba("cierra a esa hora y la repite, con el día",
+          f == "Terminado con Acme ayer a las 7 de la tarde: 3 horas.", f)
+comprueba("y la sesión queda de 3 horas, no de 17",
+          horas.totales(INICIO, INICIO + timedelta(days=2))["acme"][1] == 3 * 3600)
+
+horas.empezar("acme", INICIO)
+f = horas.responder("parar_a", None, "terminé a las 3", datetime(2026, 9, 16, 21, 0))
+comprueba("una hora que no cuadra no cierra nada, y dice cuándo empezó",
+          "no me cuadra" in f and "a las 4 de la tarde" in f and horas.abierta(), f)
+
+print("\n  el recordatorio y el aviso al entrar:")
+id_ = horas.abierta()["id"]
+comprueba("a las 2 h, nada",
+          horas.recordatorio(INICIO + timedelta(hours=2)) is None)
+r = horas.recordatorio(INICIO + timedelta(hours=3, minutes=5))
+comprueba("a las 3 h, se recuerda", r and r[0] == f"h:{id_}:1" and "terminé a las" in r[1], r)
+r = horas.recordatorio(INICIO + timedelta(hours=6, minutes=10))
+comprueba("a las 6 h, otro tramo (otra clave: se vuelve a decir)",
+          r and r[0] == f"h:{id_}:2", r)
+comprueba("al entrar el mismo día, nada",
+          horas.aviso_al_entrar(datetime(2026, 9, 16, 22, 0)) is None)
+f = horas.aviso_al_entrar(datetime(2026, 9, 17, 9, 0))
+comprueba("al entrar al día siguiente, se avisa con la hora de inicio",
+          f and "desde ayer a las 4 de la tarde" in f, f)
+horas.parar(datetime(2026, 9, 16, 20, 0))
+comprueba("sin sesión, ni recordatorio ni aviso",
+          horas.recordatorio(datetime(2026, 9, 17, 9, 0)) is None
+          and horas.aviso_al_entrar(datetime(2026, 9, 17, 9, 0)) is None)
+with memoria._conectar() as con:
+    con.execute("DELETE FROM sesiones")
+
+# La jornada de antes vuelve a crearse para el CSV
+horas.empezar("acme", datetime(2026, 9, 16, 10, 0))
+horas.empezar("García", datetime(2026, 9, 16, 12, 0))
+horas.parar(datetime(2026, 9, 16, 12, 45))
+horas.empezar("acme", datetime(2026, 9, 17, 9, 0))
+horas.parar(datetime(2026, 9, 17, 10, 30))
+horas.empezar("acme", datetime(2026, 8, 31, 23, 0))
+horas.parar(datetime(2026, 9, 1, 1, 0))
+horas.empezar("acme", datetime(2026, 9, 18, 11, 0))
+
+print("\n" + "=" * 72)
 print("EXPORTAR A CSV")
 print("=" * 72)
 with tempfile.TemporaryDirectory() as tmp:

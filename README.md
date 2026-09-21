@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-520_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-544_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -206,8 +206,8 @@ mover Whisper a CPU.
 </table>
 
 **Y además:** 💼 **horas por cliente** (*"empiezo con Acme"*, *"¿cuántas horas
-llevo este mes?"*, exporta a CSV; entiende que *"Akme"* es Acme y pregunta
-antes de crear un cliente nuevo) · ⏱️ cronómetro por voz o con botones (*"páralo"*, *"¿cuánto
+llevo este mes?"*, exporta a CSV; entiende que *"Akme"* es Acme, se ve en la
+barra y, si te olvidas de parar, te lo recuerda y acepta *"terminé a las 7"*) · ⏱️ cronómetro por voz o con botones (*"páralo"*, *"¿cuánto
 llevamos?"*) · 🌐 busca en internet solo cuando la pregunta lo pide · 🧠 recuerda
 tu nombre y tus datos entre sesiones · 🤫 corta la grabación sola al dejar de
 hablar (VAD) · ✋ interrumpible a media frase · ⚡ streaming por frases.
@@ -375,12 +375,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**520 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**544 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 97 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 402 de los 520 casos**, sin instalar una sola dependencia:
+**En CI corren 426 de los 544 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas y la [guardia de conexiones](docs/seguridad.md). Los
@@ -520,7 +520,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_resumen.py         # Persistencia entre días         (4 casos)
 ├── test_cronometro.py      # Órdenes y tiempo contado       (88 casos)
 ├── test_guardia.py         # Origin, Host, PIN              (31 casos)
-├── test_horas_cliente.py   # Fichar, nombres, periodos, CSV (85 casos)
+├── test_horas_cliente.py   # Fichar, nombres, olvidos, CSV  (108 casos)
 ├── test_rutinas.py         # Pasos permitidos y frases      (23 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │

@@ -903,6 +903,10 @@
    "pensando"
   ],
   [
+   "horas",
+   "Acme"
+  ],
+  [
    "herramienta",
    "horas"
   ],
@@ -929,6 +933,10 @@
    "pensando"
   ],
   [
+   "horas",
+   "Acme"
+  ],
+  [
    "herramienta",
    "horas"
   ],
@@ -953,6 +961,10 @@
   [
    "estado",
    "pensando"
+  ],
+  [
+   "horas",
+   "Acme"
   ],
   [
    "herramienta",
@@ -987,6 +999,10 @@
    0.0
   ],
   [
+   "horas",
+   "Acme"
+  ],
+  [
    "herramienta",
    "rutina"
   ],
@@ -1011,6 +1027,10 @@
   [
    "estado",
    "pensando"
+  ],
+  [
+   "horas",
+   null
   ],
   [
    "herramienta",
