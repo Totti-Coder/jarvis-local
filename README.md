@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-283_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-520_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -198,13 +198,17 @@ mover Whisper a CPU.
 - Apagar/reiniciar **con confirmación**
 - Volumen, bloqueo, capturas
 - Tus propios atajos (`atajos.json`)
+- **Rutinas:** *"modo trabajo"* abre, cierra y pone el cronómetro
 - Lista blanca, nunca comandos libres
 
 </td>
 </tr>
 </table>
 
-**Y además:** 🌐 busca en internet solo cuando la pregunta lo pide · 🧠 recuerda
+**Y además:** 💼 **horas por cliente** (*"empiezo con Acme"*, *"¿cuántas horas
+llevo este mes?"*, exporta a CSV; entiende que *"Akme"* es Acme y pregunta
+antes de crear un cliente nuevo) · ⏱️ cronómetro por voz o con botones (*"páralo"*, *"¿cuánto
+llevamos?"*) · 🌐 busca en internet solo cuando la pregunta lo pide · 🧠 recuerda
 tu nombre y tus datos entre sesiones · 🤫 corta la grabación sola al dejar de
 hablar (VAD) · ✋ interrumpible a media frase · ⚡ streaming por frases.
 
@@ -221,6 +225,26 @@ hablar (VAD) · ✋ interrumpible a media frase · ⚡ streaming por frases.
 | | | `ejecutar_atajo` | |
 
 </details>
+
+---
+
+## 🎯 Decisiones de producto
+
+Otro asistente genérico no aporta nada: Siri, Copilot y Gemini son gratis.
+Jarvis apunta al hueco que ellos no cubren por diseño: **datos que no pueden
+salir del equipo, un agente del que puedas fiarte y español de verdad.**
+
+- **Para quién:** profesionales con información confidencial (consultores,
+  abogados, sanitarios), que no pueden pasar a sus clientes por Otter o Fathom.
+- **Por qué ahora:** los agentes locales tienen demanda, pero OpenClaw ha
+  dejado un vacío de confianza (CVE crítico, malware en su tienda de
+  extensiones).
+- **Lo que no se construye, a propósito:** facturación propia (Verifactu
+  exige software certificado), automatizar WhatsApp personal (lo prohíben sus
+  condiciones), clics libres por la pantalla (agencia excesiva, OWASP LLM06).
+
+→ **[Análisis completo: mercado, posicionamiento, decisiones y siguientes
+pasos](docs/producto.md)**
 
 ---
 
@@ -351,14 +375,16 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**283 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**520 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
-suite del router con 93 frases reales al 100 %**, que es la pieza menos
+suite del router con 97 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 182 de los 283 casos**, sin instalar una sola dependencia:
+**En CI corren 402 de los 520 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
-del usuario y el parseo MIME del correo. Los otros 101 necesitan GPU, Ollama
+del usuario, el parseo MIME del correo, el cronómetro, las horas por
+cliente, las rutinas y la [guardia de conexiones](docs/seguridad.md). Los
+otros 118 necesitan GPU, Ollama
 y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
 que el runner no puede probar sería peor que no tener CI.
 
@@ -368,7 +394,8 @@ python test_memoria.py    # fechas y horas habladas          (37)
 python test_ventanas.py   # franjas, tramos, fines de semana (32)
 python test_horas.py      # ambigüedad de "a las 8.40"       (20)
 python test_correo.py     # MIME, firmas, citas, fechas      (19)
-python test_conversacion.py  # el turno entero, camino por camino (16)
+python test_guardia.py    # quién puede conectarse a Jarvis   (31)
+python test_conversacion.py  # el turno entero, camino por camino (29)
 python test_movil.py      # audio del navegador desde el móvil (8)
 ```
 
@@ -417,8 +444,22 @@ Jarvis acaba teniendo acceso a tu calendario, tu correo y tu ordenador.
 | 💉 **Barrera de inyección** | Web y correo van al modelo **sin herramientas** |
 | 🙈 **Secretos fuera de git** | `.env`, `token.json`, `contactos.json`, `atajos.json` y la BD |
 
-**Lo que no hay:** el servidor no tiene autenticación. Con `--red`, cualquiera
-en esa wifi puede usarlo.
+| 🛡️ **Ninguna web te lo controla** | `Origin` + `Host` en lista blanca: ni webs maliciosas ni *DNS rebinding* |
+| 🔢 **PIN en `--red`** | Cambia en cada arranque; se bloquea tras 5 fallos |
+
+**Caso real.** Estudiando el CVE-2026-25253 de OpenClaw —visitar una web
+bastaba para controlar el agente— comprobé que Jarvis tenía **la misma clase
+de fallo**: los WebSockets se saltan la política del mismo origen, y una
+página cualquiera podía grabar con tu micro o leerte el correo. Lo reproduje
+con un script de ataque, lo corregí y el mismo script lo demuestra:
+
+```
+               web maliciosa   DNS rebinding   otra app local   sin Origin
+antes (3802a99)   DENTRO          DENTRO          DENTRO          DENTRO
+ahora             403             403             403             403
+```
+
+→ **[Modelo de amenazas completo y evidencia](docs/seguridad.md)**
 
 ---
 
@@ -427,6 +468,7 @@ en esa wifi puede usarlo.
 ```
 ajustes.py      Constantes: modelo, voz, umbrales. Todo en un sitio
 servidor.py     FastAPI + la clase Conversacion (una por pestaña)
+guardia.py      Quién puede conectarse: Origin, Host y PIN
 router.py       12 herramientas y ~12 guardas deterministas
 redactor.py     Redacción de correos y detección de negativas
 escucha.py      Whisper: cargar y transcribir
@@ -436,6 +478,9 @@ memoria.py      SQLite + intérprete de fechas en español
 sistema.py      Control del PC: lista blanca, Steam, atajos
 correo.py       Gmail: leer, resumir, redactar, enviar
 certificado.py  HTTPS autofirmado, para el micrófono del móvil
+cronometro.py   Cronómetro: órdenes de voz sin pasar por el modelo
+horas.py        Horas por cliente: sesiones en SQLite y CSV
+rutinas.py      Una frase, varios pasos de una lista cerrada
 buscar.py       Búsqueda web y lectura de páginas
 calendario.py   Espejo en Google Calendar
 index.html      Interfaz + popup del correo (Three.js)
@@ -464,15 +509,19 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── atajos.EJEMPLO.json
 │
 │   # TESTS
-├── eval_router.py          # Acierto del router             (93 frases)
+├── eval_router.py          # Acierto del router             (97 frases)
 ├── test_memoria.py         # Fechas y horas habladas        (37 casos)
-├── test_ventanas.py        # Franjas, tramos y findes       (25 casos)
+├── test_ventanas.py        # Franjas, tramos y findes       (32 casos)
 ├── test_horas.py           # Ambigüedad de "a las 8.40"     (20 casos)
 ├── test_correo.py          # MIME, firmas, citas, fechas    (19 casos)
 ├── test_datos.py           # Datos personales del usuario   (10 casos)
-├── test_frases.py          # Troceado, negativas, limpieza  (10 casos)
+├── test_frases.py          # Troceado, negativas, limpieza  (37 casos)
 ├── test_voz.py             # Piper: suena, corta, pronuncia  (7 casos)
 ├── test_resumen.py         # Persistencia entre días         (4 casos)
+├── test_cronometro.py      # Órdenes y tiempo contado       (88 casos)
+├── test_guardia.py         # Origin, Host, PIN              (31 casos)
+├── test_horas_cliente.py   # Fichar, nombres, periodos, CSV (85 casos)
+├── test_rutinas.py         # Pasos permitidos y frases      (23 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)
@@ -512,6 +561,10 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
 | ✅ Control del PC con lista blanca | |
 | ✅ Avisos a la hora, sin preguntar | |
 | ✅ Eval suite del router | |
+| ✅ Cronómetro por voz y con botones | ⬜ Actas locales de reuniones |
+| ✅ Horas por cliente + exportar a CSV | |
+| ✅ Rutinas por voz (lista cerrada de pasos) | |
+| ✅ Blindaje del WebSocket ([seguridad](docs/seguridad.md)) | ⬜ Cifrar `token.json` con DPAPI |
 
 ---
 
