@@ -178,6 +178,50 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 .truco{font-size:10px;color:var(--cian-tenue);letter-spacing:.1em;
   margin-right:auto;align-self:center}
 
+/* ---------- cronómetro ----------
+   Fuera del núcleo a propósito: un clic en el núcleo abre el micro, y
+   pausar el cronómetro no debe ponerle a escuchar. */
+.crono{
+  position:fixed;top:64px;right:26px;z-index:20;
+  width:230px;padding:14px 16px 14px;
+  background:#070d14;border:1px solid var(--cian-tenue);border-radius:4px;
+  box-shadow:0 0 30px rgba(86,217,232,.08);
+  display:flex;flex-direction:column;gap:10px;
+  animation:entrar .3s ease both;
+}
+.crono[hidden]{display:none}
+.crono h2{
+  display:flex;justify-content:space-between;align-items:center;
+  font-family:'Barlow Condensed',sans-serif;font-weight:500;
+  font-size:11px;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--cian-tenue);
+}
+.crono-cifra{
+  font-family:'IBM Plex Mono',monospace;font-weight:300;
+  font-size:34px;letter-spacing:.02em;color:#d4eef4;
+  font-variant-numeric:tabular-nums;text-align:center;
+}
+.crono-cifra small{font-size:18px;color:var(--cian-tenue)}
+.crono.en-marcha .crono-cifra{color:var(--cian);
+  text-shadow:0 0 14px rgba(86,217,232,.35)}
+.crono.en-marcha h2 span::before{content:'';display:inline-block;
+  width:5px;height:5px;border-radius:50%;margin-right:7px;vertical-align:middle;
+  background:var(--cian);box-shadow:0 0 8px var(--cian);
+  animation:parpadeo 1.2s steps(2) infinite}
+.crono .botones{margin:0;justify-content:stretch}
+.crono button{
+  flex:1;font-family:'Barlow Condensed',sans-serif;
+  font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+  padding:9px 8px;border-radius:3px;cursor:pointer;
+  border:1px solid var(--cian-tenue);background:transparent;color:var(--texto);
+  transition:border-color .2s,color .2s,background .2s;
+}
+.crono button:hover{border-color:var(--acento);color:var(--acento)}
+.crono button.principal{border-color:var(--cian);color:var(--cian);
+  background:color-mix(in srgb,var(--cian) 8%,transparent)}
+.crono .cerrar{flex:none;border:none;padding:2px 4px;font-size:16px;
+  letter-spacing:0;color:var(--cian-tenue)}
+
 /* ---------- accesibilidad ---------- */
 :focus-visible{outline:2px solid var(--acento);outline-offset:4px}
 @media (prefers-reduced-motion:reduce){
@@ -196,6 +240,8 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
   .botones{margin-top:4px}
   .sobre button{flex:1;padding:14px 12px}
   .truco{display:none}
+  .crono{top:12px;left:16px;right:16px;width:auto}
+  .crono button{padding:13px 8px}
 }
 </style>
 </head>
@@ -219,6 +265,19 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 </main>
 
 <section class="registro" id="registro" aria-live="polite"></section>
+
+<!-- Cronómetro. Lo abre la voz ("abre el cronómetro") y se maneja con
+     la voz o con estos botones. Cuenta el servidor; aquí solo se pinta. -->
+<aside class="crono" id="crono" hidden aria-label="Cronómetro">
+  <h2><span>Cronómetro</span>
+    <button type="button" class="cerrar" data-accion="cerrar"
+            aria-label="Cerrar el cronómetro">&times;</button></h2>
+  <p class="crono-cifra" id="crono-cifra" role="timer">00:00<small>.0</small></p>
+  <div class="botones">
+    <button type="button" class="principal" id="crono-marcha" data-accion="empezar">Empezar</button>
+    <button type="button" data-accion="reiniciar">Reiniciar</button>
+  </div>
+</aside>
 
 <!-- Borrador de correo. Sale cuando Jarvis propone enviar uno: se revisa
      con el teclado y se manda desde aqui, nunca solo de oido. -->
@@ -301,12 +360,26 @@ function fijarEstado(valor) {
 let sock = null;
 let reintento = 0;
 
+// localStorage puede no estar (modo privado, datos bloqueados): sin él
+// solo se pierde recordar el PIN, así que nunca debe romper la conexión
+function leerPin() {
+  try { return localStorage.getItem('jarvis-pin'); } catch (e) { return null; }
+}
+function guardarPin(v) {
+  try { v ? localStorage.setItem('jarvis-pin', v) : localStorage.removeItem('jarvis-pin'); }
+  catch (e) {}
+}
+
 function conectar() {
   // wss:// cuando la pagina va por https. Una pagina segura NO puede abrir
   // un WebSocket inseguro: el navegador lo bloquea por contenido mixto, sin
   // avisar en la interfaz. Se deduce del protocolo en vez de fijarlo.
   const protocolo = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  sock = new WebSocket(`${protocolo}//${location.host}/ws`);
+  // El PIN solo hace falta desde otro aparato con --red (ver guardia.py).
+  // Se recuerda en este navegador para no pedirlo en cada reconexión.
+  const pin = leerPin();
+  sock = new WebSocket(`${protocolo}//${location.host}/ws` +
+                       (pin ? `?pin=${encodeURIComponent(pin)}` : ''));
   sock.binaryType = 'arraybuffer';     // los trozos de voz llegan en binario
 
   sock.onopen = () => {
@@ -317,7 +390,26 @@ function conectar() {
     else if (micDisponible) sock.send(JSON.stringify({cmd: 'micro_navegador'}));
   };
 
-  sock.onclose = () => {
+  sock.onclose = ev => {
+    if (ev.code === 4403) {
+      // Demasiados PIN fallidos: reintentar solo empeoraría las cosas
+      document.getElementById('conexion').textContent = 'bloqueado';
+      document.getElementById('estado').textContent =
+        'PIN bloqueado: reinicia el servidor en el PC';
+      guardarPin(null);
+      return;
+    }
+    if (ev.code === 4401) {
+      // El que había (o ninguno) no vale: se pide y se reintenta ya
+      const nuevo = prompt('PIN de Jarvis (sale en la pantalla del PC):');
+      guardarPin(nuevo && nuevo.trim());
+      if (nuevo) { setTimeout(conectar, 0); return; }
+      // Cancelado: se vuelve a pedir al reintentar, pero que se vea el motivo
+      document.getElementById('conexion').textContent = 'falta el PIN';
+      reintento++;
+      setTimeout(conectar, Math.min(5000, 400 * reintento));
+      return;
+    }
     // Antes la página se quedaba muerta si el servidor se caía o se
     // reiniciaba, y había que recargar a mano. Ahora reintenta sola,
     // esperando cada vez un poco más, hasta un tope de 5 segundos.
@@ -438,7 +530,55 @@ const alMensaje = ev => {
   else if (m.tipo === 'borrador')       abrirBorrador(m);
   else if (m.tipo === 'borrador_cerrar') cerrarBorrador();
   else if (m.tipo === 'borrador_error')  mostrarAviso(m.texto);
+  else if (m.tipo === 'crono')           pintarCrono(m);
 };
+
+/* ---------- cronómetro ----------
+   El tiempo lo lleva el servidor. Llega "lleva X segundos y está en
+   marcha", y a partir de ahí esta página sigue contando sola hasta el
+   siguiente mensaje. Así no hay que mandar nada cada décima. */
+
+const crono = document.getElementById('crono');
+const cronoCifra = document.getElementById('crono-cifra');
+const cronoMarcha = document.getElementById('crono-marcha');
+let cronoBase = 0, cronoDesde = 0, cronoCorre = false, cronoAnim = null;
+
+function formatoCrono(s) {
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+  const seg = Math.floor(s) % 60, dec = Math.floor(s * 10) % 10;
+  const dos = n => String(n).padStart(2, '0');
+  return (h ? h + ':' : '') + dos(m) + ':' + dos(seg) + `<small>.${dec}</small>`;
+}
+
+function tickCrono() {
+  const s = cronoBase + (cronoCorre ? (performance.now() - cronoDesde) / 1000 : 0);
+  cronoCifra.innerHTML = formatoCrono(s);
+}
+
+function pintarCrono(m) {
+  crono.hidden = !m.visible;
+  cronoBase = m.segundos || 0;
+  cronoDesde = performance.now();
+  cronoCorre = !!m.corriendo;
+  crono.classList.toggle('en-marcha', cronoCorre);
+  // Un solo botón que cambia: empezar, pausar o seguir desde donde iba
+  cronoMarcha.textContent = cronoCorre ? 'Pausar' : (cronoBase > 0 ? 'Seguir' : 'Empezar');
+  cronoMarcha.dataset.accion = cronoCorre ? 'pausar' : 'empezar';
+  // setInterval y no requestAnimationFrame: este se para con la pestaña
+  // en segundo plano, y al volver la cifra seguía donde se quedó
+  clearInterval(cronoAnim);
+  cronoAnim = cronoCorre ? setInterval(tickCrono, 50) : null;
+  tickCrono();
+}
+
+crono.addEventListener('click', e => {
+  const b = e.target.closest('button[data-accion]');
+  if (!b || !sock || sock.readyState !== WebSocket.OPEN) return;
+  sock.send(JSON.stringify({cmd: 'crono', accion: b.dataset.accion}));
+  // Sin esto el botón se queda con el foco, y el espacio —que es el
+  // micro— lo volvería a pulsar
+  b.blur();
+});
 
 /* ---------- borrador de correo ---------- */
 

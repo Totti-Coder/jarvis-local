@@ -50,6 +50,18 @@ import servidor  # noqa: E402
 # dejo doscientos eventos de prueba en el calendario real.
 memoria.fuente_externa = memoria.crear_externo = memoria.borrar_externo = None
 
+# Las rutinas salen de un fichero de prueba, nunca de tu atajos.json: si
+# tuvieras una rutina que se llamara como una frase de aqui, el test
+# cambiaria de resultado sin que nadie hubiera tocado el codigo.
+import tempfile  # noqa: E402
+
+_RUTINAS = Path(tempfile.mkdtemp()) / "atajos.json"
+_RUTINAS.write_text(json.dumps({"rutinas": [
+    {"nombre": "modo trabajo",
+     "pasos": [{"abrir": "vs code"}, {"cronometro": "empezar"}, {"horas": "Acme"}],
+     "dice": "A por ello."}]}), encoding="utf-8")
+servidor.rutinas.FICHERO = _RUTINAS
+
 AQUI = Path(__file__).parent
 GUARDADO = AQUI / "test_conversacion.json"
 
@@ -90,6 +102,9 @@ def resumir(mensajes):
             salida.append(("estado", m.get("valor")))
         elif t == "herramienta":
             salida.append(("herramienta", m.get("nombre")))
+        elif t == "crono":
+            salida.append(("crono", m.get("visible"), m.get("corriendo"),
+                           m.get("segundos")))
         elif t == "borrador":
             salida.append(("borrador", m.get("modo"), m.get("destinatario"),
                            m.get("asunto"), (m.get("mensaje") or "")[:40]))
@@ -135,6 +150,25 @@ ESCENARIOS = [
     ("fecha_vacia",         "Quita lo del 25 de septiembre", ("completar_tarea", {"texto": "lo del 25"}), None),
     ("fecha_si",            "sí",                           (None, None), ("borrado_dia", None)),
     ("fecha_no",            "no",                           (None, None), ("borrado_dia", None)),
+    # El cronometro no pasa por el router: aunque este diga "abre un
+    # programa", manda la orden fija. Y "para" suelto solo vale con el
+    # panel abierto; sin el, sigue el camino de siempre.
+    ("crono_abre",          "Abre el cronómetro",           ("abrir_programa", {"nombre": "cronometro"}), None),
+    ("crono_panel_para",    "Para",                         (None, None), None),
+    ("crono_sin_panel_para", "Para",                        (None, None), None),
+    # Horas y rutinas: tampoco pasan por el router. Van en este orden y al
+    # final, porque comparten la base de datos: la sesion que abre uno la
+    # ve el siguiente.
+    ("horas_sin_sesion_terminado", "He terminado",          (None, None), None),
+    # Un cliente que no existe se confirma antes de crearlo
+    ("horas_empieza",       "Empiezo con Acme",             ("abrir_programa", {"nombre": "acme"}), None),
+    ("horas_cliente_no",    "no",                           (None, None), ("cliente_nuevo", "Informe")),
+    ("horas_cliente_si",    "sí",                           (None, None), ("cliente_nuevo", "Acme")),
+    # Y uno que suena igual que uno conocido es ese: Whisper oyo "Akme"
+    ("horas_parecido",      "Empiezo con Akme",             (None, None), None),
+    ("horas_consulta",      "¿Cuántas horas llevo este mes?", (None, None), None),
+    ("rutina",              "Pon el modo trabajo",          (None, None), None),
+    ("horas_termina",       "He terminado",                 ("completar_tarea", {"texto": "lo"}), None),
 ]
 
 # El reloj de los escenarios. Sin fijarlo, "el 1 de septiembre" seria de
@@ -187,6 +221,8 @@ async def un_turno(escenario):
     servidor.correo.enviar = lambda d, a, c: (True, "Enviado.")
     servidor.redactar_correo = lambda e, d="", a="": "Hola Ana, llego tarde."
     servidor.sistema.ejecutar_accion = lambda a: "Apagando."
+    servidor.sistema.abrir_programa = lambda n: f"Abriendo {n}."
+    servidor.sistema.cerrar_programa = lambda n: f"Cerrando {n}."
 
     # El calendario tampoco se toca de verdad
     servidor.calendario.conectar = lambda interactivo=False: True
@@ -194,6 +230,10 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre == "crono_panel_para":
+        # En marcha desde hace 75 segundos, con un reloj que no se mueve
+        conv.crono = servidor.cronometro.Cronometro(reloj=lambda: 100.0)
+        conv.crono.visible, conv.crono.desde = True, 25.0
 
     def agenda_falsa(desde, hasta):
         salida = []
@@ -228,6 +268,8 @@ async def un_turno(escenario):
         elif tipo == "borrado_dia":
             conv.pendiente = {"tipo": "borrado_dia",
                               "datos": {"propias": [], "fuera": ["e1", "e2"]}}
+        elif tipo == "cliente_nuevo":
+            conv.pendiente = {"tipo": "cliente_nuevo", "datos": datos}
         elif tipo == "correo":
             conv.pendiente = {"tipo": "correo", "datos": {
                 "email": "ana@ejemplo.com", "nombre": "Ana",

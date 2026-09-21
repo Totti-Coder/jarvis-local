@@ -58,3 +58,15 @@ jobs:
 
       - name: Borrar por fecha, sin llevarse la agenda entera
         run: python test_borrar_fecha.py
+
+      - name: Cronómetro — órdenes de voz y tiempo contado
+        run: python test_cronometro.py
+
+      - name: Guardia — nadie de fuera controla Jarvis
+        run: python test_guardia.py
+
+      - name: Horas por cliente — fichar, consultar, CSV
+        run: python test_horas_cliente.py
+
+      - name: Rutinas — solo pasos de una lista cerrada
+        run: python test_rutinas.py

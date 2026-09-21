@@ -27,13 +27,17 @@ import numpy as np
 import ollama
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 import buscar
 import calendario
 import correo
+import cronometro
+import guardia
+import horas
 import memoria
+import rutinas
 import sistema
 from ajustes import (CORTE_POR_SILENCIO, FRECUENCIA, MAX_GRABACION_S,
                      MAX_TURNOS, MIN_HABLA_S, MODELO_LLM, MS_PARCIAL,
@@ -51,6 +55,7 @@ from voz import (cortar_voz, frase_terminada, hablar, permitir_voz,
 AQUI = Path(__file__).parent
 
 memoria.preparar()
+horas.preparar()
 # La agenda tambien lee Google Calendar. Se engancha aqui, en el servidor,
 # y no dentro de memoria: asi los tests de memoria siguen sacando la lista
 # solo de SQLite y dan lo mismo tengas lo que tengas en tu calendario.
@@ -103,6 +108,16 @@ def version_interfaz():
     return huella.hexdigest()[:12]
 
 
+@app.middleware("http")
+async def solo_hosts_conocidos(peticion, siguiente):
+    # La misma lista que el WebSocket (ver guardia.py). Contra el DNS
+    # rebinding: una web que se hace pasar por localhost llega con su
+    # propio nombre en Host, y aquí se queda.
+    if guardia._nombre_de(peticion.headers.get("host")) not in guardia.HOSTS:
+        return PlainTextResponse("Host no permitido", status_code=400)
+    return await siguiente(peticion)
+
+
 @app.get("/")
 async def raiz():
     # Sin no-cache, tras editar el HTML el navegador seguía sirviendo el
@@ -149,6 +164,8 @@ class Conversacion:
         # de este año o del siguiente segun el dia en que se diga, y un test
         # que dependa del calendario de verdad cambia solo de resultado.
         self.ahora = datetime.now
+        # Uno por pestaña, como el historial: el panel lo pinta esta página
+        self.crono = cronometro.Cronometro()
 
         # Se fija en correr(), que es cuando hay bucle de asyncio
         self.bucle_principal = None
@@ -165,6 +182,9 @@ class Conversacion:
             # sin dar ningún error. Pasó con el popup del correo: el servidor
             # decía "¿a quién se lo mando?" y el popup no salía por ningún lado.
             await self.enviar(tipo="version", valor=version_interfaz())
+            # Tras reiniciar el servidor la pestaña sigue enseñando el panel
+            # de antes, contando un tiempo que ya no existe: se le corrige
+            await self.enviar(tipo="crono", **self.crono.estado())
 
             await self.enviar(tipo="estado", valor="inactivo")
 
@@ -235,6 +255,9 @@ class Conversacion:
                 if mensaje.get("cmd") in CMDS_BORRADOR:
                     await self.resolver_borrador(mensaje)
                     continue
+                if mensaje.get("cmd") == "crono":
+                    await self.boton_cronometro(mensaje)
+                    continue
                 if mensaje.get("cmd") != "alternar":
                     continue
 
@@ -261,12 +284,25 @@ class Conversacion:
                 # otra pulsación: eso es lo que permite interrumpirle.
                 self.grabando = False
                 tarea_turno = asyncio.create_task(self.parar_grabacion())
-                tarea_cmd = asyncio.create_task(self.comandos.get())
+                while True:
+                    tarea_cmd = asyncio.create_task(self.comandos.get())
+                    hechas, _ = await asyncio.wait(
+                        {tarea_turno, tarea_cmd},
+                        return_when=asyncio.FIRST_COMPLETED)
+                    # Los botones del cronómetro van en el acto, sin cortarle
+                    # ni esperar a que acabe: una pausa que llega tres
+                    # segundos tarde ya no mide lo que tenía que medir.
+                    llegado = tarea_cmd.result() if tarea_cmd in hechas else None
+                    if isinstance(llegado, dict) and llegado.get("cmd") == "crono":
+                        await self.boton_cronometro(llegado)
+                        if tarea_turno.done():
+                            hechas = set()      # atendido: no es interrupción
+                            break
+                        continue
+                    break
 
-                hechas, _ = await asyncio.wait(
-                    {tarea_turno, tarea_cmd},
-                    return_when=asyncio.FIRST_COMPLETED)
-
+                if not hechas:
+                    continue
                 if tarea_cmd in hechas:
                     llegado = tarea_cmd.result()
                     # Los botones del borrador no son una interrupción: si se
@@ -554,6 +590,23 @@ class Conversacion:
             await self._resolver_pendiente(pregunta)
             return
 
+        # El cronómetro no pasa por el modelo: "para" tiene que parar ya
+        accion = cronometro.orden(pregunta, self.crono.visible)
+        if accion:
+            await self._usar_cronometro(accion, pregunta)
+            return
+        # Las horas y las rutinas, igual: frases fijas, sin el modelo
+        abierta = await asyncio.to_thread(horas.abierta)
+        conocidos = await asyncio.to_thread(horas.clientes)
+        pedido = horas.orden(pregunta, abierta is not None, conocidos)
+        if pedido:
+            await self._usar_horas(*pedido, pregunta, conocidos)
+            return
+        rutina = await asyncio.to_thread(rutinas.buscar, pregunta)
+        if rutina:
+            await self._correr_rutina(rutina, pregunta)
+            return
+
         nombre, args = await self._enrutar(pregunta)
 
         material = None
@@ -590,6 +643,88 @@ class Conversacion:
 
         await self._conversar(pregunta, material)
 
+    async def _usar_cronometro(self, accion, pregunta):
+        """Una orden de voz al cronómetro: se hace, se pinta y se cuenta."""
+        frase = self.crono.aplicar(accion)
+        await self.enviar(tipo="crono", **self.crono.estado())
+        await self.decir_turno(frase, "cronómetro", pregunta)
+
+    async def _usar_horas(self, accion, dato, pregunta, conocidos=None):
+        if accion == "empezar":
+            # "Akme" es Acme: Whisper no escribe igual un nombre dos veces.
+            # Y uno que no se parece a ninguno se confirma antes de crearlo:
+            # "empiezo con el informe" no debe abrir un cliente "Informe".
+            conocido = horas.cliente_parecido(dato, conocidos or {})
+            if conocido is None:
+                nombre = horas.nombre_bonito(dato)
+                self.pendiente["tipo"], self.pendiente["datos"] = "cliente_nuevo", nombre
+                await self.decir_turno(
+                    f"No tengo ningún cliente llamado {nombre}. "
+                    f"¿Lo creo y empiezo a contar?", "horas", pregunta)
+                return
+            dato = conocido
+        frase = await asyncio.to_thread(horas.responder, accion, dato,
+                                        pregunta, self.ahora())
+        print(f"[horas] {accion} {dato or ''}".rstrip())
+        await self.decir_turno(frase, "horas", pregunta)
+
+    async def _crear_cliente(self, nombre, pregunta):
+        if not es_afirmacion(pregunta):
+            print(f"[horas] cliente nuevo descartado: {nombre}")
+            await self.decir_turno("Vale, no cuento nada.", None, pregunta)
+            return
+        frase = await asyncio.to_thread(horas.empezar, nombre, self.ahora())
+        print(f"[horas] cliente nuevo: {nombre}")
+        await self.decir_turno(frase, "horas", pregunta)
+
+    async def _correr_rutina(self, rutina, pregunta):
+        """Los pasos en orden. Si uno falla, los demás siguen y se dice
+        cuál falló: que no se abra Spotify no es motivo para no empezar
+        a contar horas."""
+        fallos = []
+        for tipo, valor in rutina["pasos"]:
+            try:
+                if tipo == "abrir":
+                    r = await asyncio.to_thread(sistema.abrir_programa, valor)
+                    if not r.startswith("Abriendo"):
+                        fallos.append(f"abrir {valor}")
+                elif tipo == "cerrar":
+                    # Si ya estaba cerrado, mejor: no es un fallo
+                    await asyncio.to_thread(sistema.cerrar_programa, valor)
+                elif tipo == "atajo":
+                    r = await asyncio.to_thread(sistema.ejecutar_atajo, valor)
+                    if r.startswith(("No conozco", "No encuentro", "No he podido",
+                                     "No tienes")):
+                        fallos.append(f"lanzar {valor}")
+                elif tipo == "cronometro":
+                    if valor not in cronometro.ACCIONES:
+                        fallos.append(f"el cronómetro ({valor})")
+                        continue
+                    self.crono.aplicar(valor)
+                    await self.enviar(tipo="crono", **self.crono.estado())
+                elif tipo == "horas":
+                    if valor.lower() in ("parar", "terminar"):
+                        await asyncio.to_thread(horas.parar, self.ahora())
+                    else:
+                        await asyncio.to_thread(horas.empezar, valor, self.ahora())
+            except Exception as e:
+                print(f"[rutina] {rutina['nombre']}: {tipo} {valor!r} -> {e}")
+                fallos.append(f"{tipo} {valor}")
+
+        frase = rutina["dice"]
+        if fallos:
+            frase += f" No he podido: {', '.join(fallos)}."
+        print(f"[rutina] {rutina['nombre']}: {len(rutina['pasos'])} pasos, "
+              f"{len(fallos)} fallidos")
+        await self.decir_turno(frase, "rutina", pregunta)
+
+    async def boton_cronometro(self, mensaje):
+        """Un botón del panel. Sin voz: ya lo estás viendo."""
+        accion = mensaje.get("accion")
+        if accion in cronometro.ACCIONES:
+            self.crono.aplicar(accion)
+        await self.enviar(tipo="crono", **self.crono.estado())
+
     async def _enrutar(self, pregunta):
         """¿Hace falta una herramienta? (None, None) si es charla."""
         try:
@@ -623,6 +758,8 @@ class Conversacion:
             await self._seguir_correo(datos, pregunta)
         elif tipo == "correo":
             await self._confirmar_envio(datos, pregunta)
+        elif tipo == "cliente_nuevo":
+            await self._crear_cliente(datos, pregunta)
 
     async def _confirmar_apagado(self, accion, pregunta):
         if es_afirmacion(pregunta):
@@ -1272,8 +1409,38 @@ class Conversacion:
                 return
 
 
+# Códigos de cierre propios (4000-4999 son de la aplicación). La página
+# los distingue para pedir el PIN o avisar del bloqueo.
+CIERRE_PIN = 4401
+CIERRE_BLOQUEADO = 4403
+
+
 @app.websocket("/ws")
 async def ws(sock: WebSocket):
+    motivo = guardia.motivo_rechazo(sock.headers.get("origin"),
+                                    sock.headers.get("host"))
+    if motivo:
+        # Cerrar sin aceptar: el navegador recibe un 403 y ni un byte más
+        print(f"[guardia] conexión rechazada ({motivo})")
+        await sock.close()
+        return
+
+    ip = sock.client.host if sock.client else ""
+    llave = guardia.LLAVE
+    if llave and not guardia.es_local(ip):
+        if not llave.comprobar(sock.query_params.get("pin")):
+            await sock.accept()
+            if llave.bloqueada:
+                print(f"[guardia] PIN BLOQUEADO tras {llave.fallos} fallos "
+                      f"(último desde {ip}). Reinicia para generar otro.")
+                await sock.close(code=CIERRE_BLOQUEADO)
+            else:
+                if sock.query_params.get("pin"):
+                    print(f"[guardia] PIN incorrecto desde {ip} "
+                          f"({llave.fallos}/{guardia.INTENTOS_PIN})")
+                await sock.close(code=CIERRE_PIN)
+            return
+
     await Conversacion(sock).correr()
 
 
@@ -1326,6 +1493,11 @@ if __name__ == "__main__":
 
         ssl = {"ssl_keyfile": str(certificado.CLAVE),
                "ssl_certfile": str(certificado.CERT)}
+        # Los nombres por los que el móvil puede llegar: los mismos que
+        # lleva el certificado
+        ips, nombres = certificado._nombres()
+        guardia.HOSTS |= {n.lower() for n in [*ips, *nombres]}
+        guardia.LLAVE = guardia.Llave()
         dias = certificado.caduca_en()
         if dias is not None and dias < 15:
             print(f"\n  Aviso: el certificado caduca en {dias} días."
@@ -1340,9 +1512,10 @@ if __name__ == "__main__":
         print("  privada: el certificado lo firma tu PC y no hay autoridad")
         print("  que pueda certificar una IP privada. Continúa y acepta.")
         print()
-        print("  Cualquiera en esta wifi puede usar Jarvis: no hay")
-        print("  contraseña. Podría apagarte el ordenador o mandar")
-        print("  correos con tu cuenta. Úsalo solo en una red de fiar.")
+        print(f"  PIN para el móvil:  {guardia.LLAVE.pin}")
+        print()
+        print("  Te lo pedirá una vez; este PC no lo necesita. Cambia en")
+        print(f"  cada arranque, y tras {guardia.INTENTOS_PIN} fallos se bloquea hasta reiniciar.")
         print("  " + "!" * 62)
     else:
         print("\n  Abre http://localhost:8000")
