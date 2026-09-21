@@ -18,43 +18,135 @@
     "  Whisper se equivoca transcribiendo. Aqui el comando lo escribes TU,",
     "  con calma y revisandolo. La voz solo elige cual de los tuyos lanzar.",
     "  Lo peor que puede pasar con una frase mal oida es que dispare otro",
-    "  atajo tuyo, nunca un comando que no hayas escrito."
+    "  atajo tuyo, nunca un comando que no hayas escrito.",
+    "",
+    "RUTINAS: una frase, varios pasos",
+    "  nombre    lo que dices; tiene que ser la frase entera",
+    "            ('pon el modo trabajo' vale, 'que es el modo trabajo' no)",
+    "  pasos     lista; cada paso es UNO de estos, nunca un comando:",
+    "              {\"abrir\": \"vs code\"}        programa de la lista o instalado",
+    "              {\"cerrar\": \"discord\"}       programa abierto",
+    "              {\"atajo\": \"abre github\"}    uno de tus atajos de arriba",
+    "              {\"cronometro\": \"empezar\"}   empezar, pausar, reiniciar...",
+    "              {\"horas\": \"Acme\"}           empieza a contar para ese cliente",
+    "              {\"horas\": \"parar\"}          deja de contar",
+    "  dice      lo que contesta al acabar (opcional)",
+    "",
+    "  Para un comando, crea un atajo y llamalo desde la rutina: asi los",
+    "  comandos salen de un unico sitio. Un atajo con 'confirma' no puede",
+    "  ir en una rutina: seria saltarse su pregunta de seguridad."
   ],
-
   "atajos": [
     {
       "nombre": "copia de seguridad",
-      "alias": ["haz una copia", "backup"],
-      "comando": ["robocopy", "C:\\Users\\TU_USUARIO\\Documents",
-                  "D:\\Backup\\Documents", "/MIR", "/R:1", "/W:1"],
+      "alias": [
+        "haz una copia",
+        "backup"
+      ],
+      "comando": [
+        "robocopy",
+        "C:\\Users\\TU_USUARIO\\Documents",
+        "D:\\Backup\\Documents",
+        "/MIR",
+        "/R:1",
+        "/W:1"
+      ],
       "dice": "Haciendo la copia de seguridad."
     },
     {
       "nombre": "actualizar el proyecto",
-      "alias": ["git pull", "baja los cambios"],
-      "comando": ["git", "pull"],
+      "alias": [
+        "git pull",
+        "baja los cambios"
+      ],
+      "comando": [
+        "git",
+        "pull"
+      ],
       "cwd": "C:\\Users\\TU_USUARIO\\Desktop\\mi-proyecto",
       "dice": "Bajando los ultimos cambios."
     },
     {
-      "nombre": "modo trabajo",
-      "alias": ["ponme a trabajar", "empezamos"],
-      "comando": ["cmd", "/c", "start", "", "https://github.com"],
-      "dice": "Vamos alla."
+      "nombre": "abre github",
+      "alias": [
+        "mi github"
+      ],
+      "comando": [
+        "cmd",
+        "/c",
+        "start",
+        "",
+        "https://github.com"
+      ],
+      "dice": "Abriendo GitHub."
     },
     {
       "nombre": "limpiar temporales",
-      "alias": ["borra los temporales"],
-      "comando": ["cmd", "/c", "del", "/q", "/s", "%TEMP%\\*"],
+      "alias": [
+        "borra los temporales"
+      ],
+      "comando": [
+        "cmd",
+        "/c",
+        "del",
+        "/q",
+        "/s",
+        "%TEMP%\\*"
+      ],
       "dice": "Limpiando archivos temporales.",
       "confirma": true
     },
     {
       "nombre": "apagar el monitor",
-      "alias": ["apaga la pantalla"],
-      "comando": ["powershell", "-NoProfile", "-Command",
-                  "(Add-Type '[DllImport(\"user32.dll\")]public static extern int SendMessage(int hWnd,int hMsg,int wParam,int lParam);' -Name a -Pas)::SendMessage(-1,0x0112,0xF170,2)"],
+      "alias": [
+        "apaga la pantalla"
+      ],
+      "comando": [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        "(Add-Type '[DllImport(\"user32.dll\")]public static extern int SendMessage(int hWnd,int hMsg,int wParam,int lParam);' -Name a -Pas)::SendMessage(-1,0x0112,0xF170,2)"
+      ],
       "dice": "Apagando la pantalla."
+    }
+  ],
+  "rutinas": [
+    {
+      "nombre": "modo trabajo",
+      "alias": [
+        "empezamos",
+        "a trabajar"
+      ],
+      "pasos": [
+        {
+          "abrir": "vs code"
+        },
+        {
+          "atajo": "abre github"
+        },
+        {
+          "cerrar": "discord"
+        },
+        {
+          "cronometro": "empezar"
+        }
+      ],
+      "dice": "Modo trabajo. A por ello."
+    },
+    {
+      "nombre": "hora de comer",
+      "alias": [
+        "me voy a comer"
+      ],
+      "pasos": [
+        {
+          "horas": "parar"
+        },
+        {
+          "cronometro": "pausar"
+        }
+      ],
+      "dice": "Buen provecho. He dejado de contar."
     }
   ]
 }

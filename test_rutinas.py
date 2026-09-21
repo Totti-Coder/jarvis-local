@@ -1,0 +1,101 @@
+"""Rutinas (ver rutinas.py): qué se acepta en atajos.json y qué frase las lanza.
+
+Fichero de rutinas temporal: nunca lee el tuyo. Stdlib pura: corre en el CI.
+
+Uso:  python test_rutinas.py
+"""
+
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8")
+
+import rutinas
+
+fallos = []
+
+
+def comprueba(titulo, condicion, detalle=""):
+    ok = bool(condicion)
+    print(f"  {'OK ' if ok else 'MAL'} {titulo}" + (f"\n        {detalle}" if detalle and not ok else ""))
+    if not ok:
+        fallos.append(titulo)
+
+
+DATOS = {
+    "atajos": [
+        {"nombre": "copia de seguridad", "comando": ["robocopy", "a", "b"]},
+        {"nombre": "limpiar temporales", "comando": ["cmd"], "confirma": True},
+    ],
+    "rutinas": [
+        {"nombre": "modo trabajo", "alias": ["empezamos", "a currar"],
+         "pasos": [{"abrir": "vs code"}, {"cerrar": "discord"},
+                   {"cronometro": "empezar"}, {"horas": "Acme"}],
+         "dice": "A por ello."},
+        {"nombre": "la hora de comer",
+         "pasos": [{"horas": "parar"}, {"cronometro": "pausar"}]},
+        {"nombre": "fin del día", "pasos": [{"atajo": "copia de seguridad"}]},
+        # --- mal definidas: se saltan ENTERAS ---
+        {"nombre": "con comando suelto", "pasos": [{"comando": ["del", "/s", "C:\\"]}]},
+        {"nombre": "salta la confirmacion", "pasos": [{"atajo": "limpiar temporales"}]},
+        {"nombre": "dos cosas en un paso", "pasos": [{"abrir": "a", "cerrar": "b"}]},
+        {"nombre": "valor que no es texto", "pasos": [{"abrir": ["cmd", "/c"]}]},
+        {"nombre": "sin pasos", "pasos": []},
+        {"pasos": [{"abrir": "spotify"}]},
+    ],
+}
+
+with tempfile.TemporaryDirectory() as tmp:
+    fichero = Path(tmp) / "atajos.json"
+    fichero.write_text(json.dumps(DATOS), encoding="utf-8")
+    cargadas = rutinas.cargar(fichero)
+
+print("=" * 72)
+print("QUÉ SE ACEPTA")
+print("=" * 72)
+nombres = [r["nombre"] for r in cargadas]
+comprueba("las tres bien definidas se cargan",
+          nombres == ["modo trabajo", "la hora de comer", "fin del día"], nombres)
+for n in ["con comando suelto", "salta la confirmacion", "dos cosas en un paso",
+          "valor que no es texto", "sin pasos"]:
+    comprueba(f"se rechaza: {n}", n not in nombres)
+comprueba("los pasos quedan como (tipo, valor), en orden",
+          cargadas[0]["pasos"] == [("abrir", "vs code"), ("cerrar", "discord"),
+                                   ("cronometro", "empezar"), ("horas", "Acme")],
+          cargadas[0]["pasos"])
+comprueba("sin 'dice', una frase por defecto",
+          cargadas[1]["dice"] == "La hora de comer, listo.", cargadas[1]["dice"])
+comprueba("sin fichero, ninguna rutina (y no revienta)",
+          rutinas.cargar(Path(tmp) / "no-existe.json") == [])
+
+print("\n" + "=" * 72)
+print("QUÉ FRASE LAS LANZA")
+print("=" * 72)
+for frase, esperada in [
+    ("Modo trabajo", "modo trabajo"),
+    ("Pon el modo trabajo", "modo trabajo"),
+    ("Jarvis, activa modo trabajo, por favor", "modo trabajo"),
+    ("Empezamos", "modo trabajo"),
+    ("Vale, a currar", "modo trabajo"),
+    # el nombre empieza por "la": no se lo come el filtro de delante
+    ("La hora de comer", "la hora de comer"),
+    ("Pon la hora de comer", "la hora de comer"),
+    ("Fin del día", "fin del día"),
+    # hablar DE la rutina no la lanza: hace varias cosas de golpe
+    ("¿Qué es el modo trabajo?", None),
+    ("No quiero el modo trabajo", None),
+    ("Modo trabajo mañana a las 9", None),
+    ("Empezamos con Acme", None),
+    ("Cuéntame un chiste", None),
+    ("", None),
+]:
+    r = rutinas.buscar(frase, cargadas)
+    obtenida = r["nombre"] if r else None
+    comprueba(f"{frase!r:<44} -> {obtenida}", obtenida == esperada, f"esperaba {esperada}")
+
+print("\n" + "=" * 72)
+print(f"  {'TODO BIEN' if not fallos else str(len(fallos)) + ' FALLOS'}")
+print("=" * 72)
+sys.exit(1 if fallos else 0)
