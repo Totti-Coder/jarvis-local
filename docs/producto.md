@@ -83,7 +83,7 @@ Esta lista pesa tanto como la de funcionalidades.
 | Qué | Hoy |
 |---|---|
 | Acierto del router (elegir la acción correcta) | **97/97** frases reales |
-| Tests | **602 casos**, 479 en el CI |
+| Tests | **649 casos**, 514 en el CI |
 | Latencia de voz a respuesta | **~0,8 s** |
 | APIs de pago | **0** |
 | Conexiones ajenas aceptadas | **0** (antes, todas: [seguridad](seguridad.md)) |
@@ -106,6 +106,11 @@ Esta lista pesa tanto como la de funcionalidades.
   distracciones, pone el cronómetro y empieza a contar horas. **Hipótesis:**
   es lo que más se nota en el día a día. El riesgo es bajo porque una rutina
   solo encadena pasos de una lista cerrada, y ninguno es un comando.
+- **Temporizador.** *"Ponme un pomodoro"* o *"avísame en 10 minutos"*, y un
+  paso de rutina (`{"temporizador": "25"}`) para que el "modo trabajo" sea
+  de verdad un bloque de foco. Una frase con contenido (*"avísame en 10
+  minutos de sacar la pizza"*) no es un temporizador: es una tarea con hora
+  y va a la agenda.
 
 ## Siguiente: hipótesis por validar
 

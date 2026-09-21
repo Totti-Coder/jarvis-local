@@ -37,12 +37,15 @@ DATOS = {
         {"nombre": "la hora de comer",
          "pasos": [{"horas": "parar"}, {"cronometro": "pausar"}]},
         {"nombre": "fin del día", "pasos": [{"atajo": "copia de seguridad"}]},
+        {"nombre": "foco", "pasos": [{"temporizador": "25"}, {"cronometro": "empezar"}]},
         # --- mal definidas: se saltan ENTERAS ---
         {"nombre": "con comando suelto", "pasos": [{"comando": ["del", "/s", "C:\\"]}]},
         {"nombre": "salta la confirmacion", "pasos": [{"atajo": "limpiar temporales"}]},
         {"nombre": "dos cosas en un paso", "pasos": [{"abrir": "a", "cerrar": "b"}]},
         {"nombre": "valor que no es texto", "pasos": [{"abrir": ["cmd", "/c"]}]},
         {"nombre": "sin pasos", "pasos": []},
+        {"nombre": "temporizador en palabras", "pasos": [{"temporizador": "veinte"}]},
+        {"nombre": "temporizador eterno", "pasos": [{"temporizador": "99999"}]},
         {"pasos": [{"abrir": "spotify"}]},
     ],
 }
@@ -56,10 +59,11 @@ print("=" * 72)
 print("QUÉ SE ACEPTA")
 print("=" * 72)
 nombres = [r["nombre"] for r in cargadas]
-comprueba("las tres bien definidas se cargan",
-          nombres == ["modo trabajo", "la hora de comer", "fin del día"], nombres)
+comprueba("las cuatro bien definidas se cargan",
+          nombres == ["modo trabajo", "la hora de comer", "fin del día", "foco"], nombres)
 for n in ["con comando suelto", "salta la confirmacion", "dos cosas en un paso",
-          "valor que no es texto", "sin pasos"]:
+          "valor que no es texto", "sin pasos", "temporizador en palabras",
+          "temporizador eterno"]:
     comprueba(f"se rechaza: {n}", n not in nombres)
 comprueba("los pasos quedan como (tipo, valor), en orden",
           cargadas[0]["pasos"] == [("abrir", "vs code"), ("cerrar", "discord"),

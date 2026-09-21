@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-602_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-649_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -205,7 +205,8 @@ mover Whisper a CPU.
 </tr>
 </table>
 
-**Y además:** 💼 **horas por cliente** (*"empiezo con Acme"*, *"¿cuántas horas
+**Y además:** ⏳ **temporizador** (*"ponme un pomodoro"*, *"avísame en 10
+minutos"*, *"¿cuánto queda?"*): avisa al acabar, pero nunca a media frase tuya · 💼 **horas por cliente** (*"empiezo con Acme"*, *"¿cuántas horas
 llevo este mes?"*, exporta a CSV; entiende que *"Akme"* es Acme, se ve en la
 barra y, si te olvidas de parar, te lo recuerda y acepta *"terminé a las 7"*; se corrige hablando: *"ayer trabajé 2 horas para
 García"*, *"quítale media hora a Acme"*, *"borra la última sesión"*) · ⏱️ cronómetro por voz o con botones (*"páralo"*, *"¿cuánto
@@ -376,16 +377,16 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**602 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**649 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 97 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 479 de los 602 casos**, sin instalar una sola dependencia:
+**En CI corren 514 de los 649 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
-cliente, las rutinas y la [guardia de conexiones](docs/seguridad.md). Los
-otros 123 necesitan GPU, Ollama
+cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
+otros 135 necesitan GPU, Ollama
 y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
 que el runner no puede probar sería peor que no tener CI.
 
@@ -482,6 +483,7 @@ certificado.py  HTTPS autofirmado, para el micrófono del móvil
 cronometro.py   Cronómetro: órdenes de voz sin pasar por el modelo
 horas.py        Horas por cliente: sesiones en SQLite y CSV
 rutinas.py      Una frase, varios pasos de una lista cerrada
+temporizador.py Cuenta atrás que avisa: pomodoros
 buscar.py       Búsqueda web y lectura de páginas
 calendario.py   Espejo en Google Calendar
 index.html      Interfaz + popup del correo (Three.js)
@@ -522,7 +524,8 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_cronometro.py      # Órdenes y tiempo contado       (88 casos)
 ├── test_guardia.py         # Origin, Host, PIN              (31 casos)
 ├── test_horas_cliente.py   # Fichar, corregir, olvidos, CSV (161 casos)
-├── test_rutinas.py         # Pasos permitidos y frases      (23 casos)
+├── test_rutinas.py         # Pasos permitidos y frases      (26 casos)
+├── test_temporizador.py    # Qué frase lo pone y cuál no    (33 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)
@@ -565,6 +568,7 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
 | ✅ Cronómetro por voz y con botones | ⬜ Actas locales de reuniones |
 | ✅ Horas por cliente + exportar a CSV | |
 | ✅ Rutinas por voz (lista cerrada de pasos) | |
+| ✅ Temporizador y pomodoros | |
 | ✅ Blindaje del WebSocket ([seguridad](docs/seguridad.md)) | ⬜ Cifrar `token.json` con DPAPI |
 
 ---

@@ -236,6 +236,49 @@ async def escenarios():
     comprueba("si pulsas mientras avisa, NO vuelve a reposo",
               c.estado == "escuchando" and estados[-1:] == ["hablando"], estados)
 
+    # ---- EL TEMPORIZADOR: que suene de verdad, y cuándo no ----
+    def acabados(sock):
+        return [d for d in dichos(sock) if "Se acabó" in d]
+
+    def barra(sock):
+        return [m for m in sock.mensajes if m.get("tipo") == "temporizador"]
+
+    s = SocketFalso()
+    c = servidor.Conversacion(s)
+    await c.poner_temporizador(0.05)
+    comprueba("temporizador: la barra lo enseña al ponerlo",
+              barra(s)[-1]["queda"] is not None, barra(s))
+    await asyncio.sleep(0.25)
+    comprueba("temporizador: suena al acabar", len(acabados(s)) == 1, dichos(s))
+    comprueba("temporizador: y la barra se apaga", barra(s)[-1]["queda"] is None, barra(s)[-1])
+
+    s = SocketFalso()
+    c = servidor.Conversacion(s)
+    c.grabando = True
+    await c.poner_temporizador(0.05)
+    await asyncio.sleep(0.25)
+    comprueba("temporizador: mientras hablas, espera", acabados(s) == [], dichos(s))
+    c.grabando = False
+    await asyncio.sleep(0.5)
+    comprueba("temporizador: y suena al quedar libre", len(acabados(s)) == 1, dichos(s))
+
+    s = SocketFalso()
+    c = servidor.Conversacion(s)
+    await c.poner_temporizador(0.1)
+    await c._usar_temporizador("cancelar", None, "cancela el temporizador")
+    await asyncio.sleep(0.3)
+    comprueba("temporizador: cancelado, no suena", acabados(s) == [], dichos(s))
+
+    s = SocketFalso()
+    c = servidor.Conversacion(s)
+    await c.poner_temporizador(0.1)
+    await c.poner_temporizador(0.4)
+    await asyncio.sleep(0.25)
+    comprueba("temporizador: poner otro sustituye al primero (que no suena)",
+              acabados(s) == [], dichos(s))
+    await asyncio.sleep(0.4)
+    comprueba("temporizador: suena solo el segundo", len(acabados(s)) == 1, dichos(s))
+
 
 asyncio.run(escenarios())
 

@@ -38,6 +38,7 @@ import guardia
 import horas
 import memoria
 import rutinas
+import temporizador
 import sistema
 from ajustes import (CORTE_POR_SILENCIO, FRECUENCIA, MAX_GRABACION_S,
                      MAX_TURNOS, MIN_HABLA_S, MODELO_LLM, MS_PARCIAL,
@@ -171,6 +172,9 @@ class Conversacion:
         # mandaría, y tras reiniciar el servidor la pestaña seguiría
         # enseñando una sesión que ya no existe
         self.horas_enviadas = "sin enviar"
+        # La cuenta atrás de esta pestaña: {"fin": monotonic, "segundos": total}
+        self.temporizador = None
+        self.tarea_temporizador = None
 
         # Se fija en correr(), que es cuando hay bucle de asyncio
         self.bucle_principal = None
@@ -191,6 +195,7 @@ class Conversacion:
             # de antes, contando un tiempo que ya no existe: se le corrige
             await self.enviar(tipo="crono", **self.crono.estado())
             await self.enviar_horas()
+            await self.enviar_temporizador()
 
             await self.enviar(tipo="estado", valor="inactivo")
 
@@ -352,7 +357,8 @@ class Conversacion:
             pass
         finally:
             for t in (self.tarea_medidor, self.tarea_parciales, self.tarea_limite,
-                      self.tarea_silencio, self.tarea_receptor, self.tarea_avisos):
+                      self.tarea_silencio, self.tarea_receptor, self.tarea_avisos,
+                      self.tarea_temporizador):
                 if t:
                     t.cancel()
             cortar_voz()          # si se va con el asistente hablando, que calle
@@ -601,6 +607,12 @@ class Conversacion:
             await self._resolver_pendiente(pregunta)
             return
 
+        # El temporizador tampoco: "avísame en 10 minutos" es una frase fija
+        pedido_t = temporizador.orden(pregunta, self.temporizador is not None)
+        if pedido_t:
+            await self._usar_temporizador(*pedido_t, pregunta)
+            return
+
         # El cronómetro no pasa por el modelo: "para" tiene que parar ya
         accion = cronometro.orden(pregunta, self.crono.visible)
         if accion:
@@ -774,6 +786,8 @@ class Conversacion:
                         continue
                     self.crono.aplicar(valor)
                     await self.enviar(tipo="crono", **self.crono.estado())
+                elif tipo == "temporizador":
+                    await self.poner_temporizador(int(valor) * 60)
                 elif tipo == "horas":
                     if valor.lower() in ("parar", "terminar"):
                         await asyncio.to_thread(horas.parar, self.ahora())
@@ -790,6 +804,63 @@ class Conversacion:
         print(f"[rutina] {rutina['nombre']}: {len(rutina['pasos'])} pasos, "
               f"{len(fallos)} fallidos")
         await self.decir_turno(frase, "rutina", pregunta)
+
+    # ---------------------------------------------------------------
+    # TEMPORIZADOR
+    # ---------------------------------------------------------------
+
+    def _queda(self):
+        return max(0.0, self.temporizador["fin"] - time.monotonic())
+
+    async def enviar_temporizador(self):
+        if self.temporizador:
+            await self.enviar(tipo="temporizador", queda=round(self._queda()),
+                              total=self.temporizador["segundos"])
+        else:
+            await self.enviar(tipo="temporizador", queda=None, total=None)
+
+    async def poner_temporizador(self, segundos):
+        """Uno por pestaña: poner otro sustituye al anterior."""
+        if self.tarea_temporizador:
+            self.tarea_temporizador.cancel()
+        self.temporizador = {"fin": time.monotonic() + segundos, "segundos": segundos}
+        self.tarea_temporizador = asyncio.create_task(self._esperar_temporizador())
+        await self.enviar_temporizador()
+
+    async def _esperar_temporizador(self):
+        await asyncio.sleep(self._queda())
+        # Si en ese momento estás hablando o Jarvis está contestando, el
+        # aviso espera a que quede libre: pisarte a media frase es peor
+        # que avisar un segundo tarde
+        while self.grabando or self.estado != "inactivo":
+            await asyncio.sleep(0.3)
+        total = self.temporizador["segundos"]
+        self.temporizador = None
+        self.tarea_temporizador = None
+        await self.enviar_temporizador()
+        frase = temporizador.frase_acabado(total)
+        print(f"[temporizador] {frase}")
+        await self.decir_suelto(frase, "temporizador")
+
+    async def _usar_temporizador(self, accion, segundos, pregunta):
+        if accion == "poner":
+            await self.poner_temporizador(segundos)
+            frase = temporizador.frase_puesto(segundos)
+        elif accion == "sin_duracion":
+            frase = "¿De cuánto tiempo? Por ejemplo: temporizador de 10 minutos."
+        elif accion == "consultar":
+            frase = (temporizador.frase_queda(self._queda()) if self.temporizador
+                     else "No hay ningún temporizador en marcha.")
+        else:                                           # cancelar
+            if self.temporizador:
+                self.tarea_temporizador.cancel()
+                self.temporizador = self.tarea_temporizador = None
+                await self.enviar_temporizador()
+                frase = "Temporizador cancelado."
+            else:
+                frase = "No había ningún temporizador."
+        print(f"[temporizador] {accion}")
+        await self.decir_turno(frase, "temporizador", pregunta)
 
     async def boton_cronometro(self, mensaje):
         """Un botón del panel. Sin voz: ya lo estás viendo."""

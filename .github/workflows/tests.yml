@@ -70,3 +70,6 @@ jobs:
 
       - name: Rutinas — solo pasos de una lista cerrada
         run: python test_rutinas.py
+
+      - name: Temporizador — qué frase lo pone y cuál no
+        run: python test_temporizador.py

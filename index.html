@@ -46,8 +46,13 @@ body{
 /* Fichaje en marcha: siempre a la vista, porque una sesión olvidada es
    una hora mal facturada. Ámbar, como todo lo que viene de la agenda. */
 .fichaje{margin-left:18px;color:var(--ambar);letter-spacing:.2em;
-  font-variant-numeric:tabular-nums}
+  font-variant-numeric:tabular-nums;
+  /* Si no cabe, baja ENTERO: partido dejaba el punto arriba y la cifra abajo */
+  display:inline-block;white-space:nowrap}
 .fichaje[hidden]{display:none}
+/* La cuenta atrás, en cian: es de esta pestaña, no de la agenda */
+.fichaje.cuenta{color:var(--cian)}
+.fichaje.cuenta::before{background:var(--cian);box-shadow:0 0 8px var(--cian)}
 .fichaje::before{content:'';display:inline-block;width:6px;height:6px;
   border-radius:50%;background:var(--ambar);margin-right:8px;
   vertical-align:middle;box-shadow:0 0 8px var(--ambar);
@@ -259,7 +264,8 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 
 <header class="barra">
   <span>Jarvis · <b id="conexion">conectando</b><span class="fichaje" id="fichaje"
-        hidden role="status" aria-live="polite"></span></span>
+        hidden role="status" aria-live="polite"></span><span class="fichaje cuenta"
+        id="cuenta" hidden role="timer"></span></span>
   <nav class="telemetria" aria-label="Estado del sistema">
     <span id="t-oido">Oído</span>
     <span id="t-modelo">Modelo</span>
@@ -543,6 +549,7 @@ const alMensaje = ev => {
   else if (m.tipo === 'borrador_error')  mostrarAviso(m.texto);
   else if (m.tipo === 'crono')           pintarCrono(m);
   else if (m.tipo === 'horas')           pintarFichaje(m);
+  else if (m.tipo === 'temporizador')    pintarCuenta(m);
 };
 
 /* ---------- fichaje (horas por cliente) ----------
@@ -557,6 +564,29 @@ function tickFichaje() {
   const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
   fichaje.textContent = `${fichajeCliente} · ${h}:${String(m).padStart(2, '0')}`;
   fichaje.title = `Contando horas para ${fichajeCliente}`;
+}
+
+/* ---------- temporizador ----------
+   Llega cuánto queda y se descuenta aquí. Al llegar a cero se queda en
+   00:00 hasta que el servidor avisa: es él quien habla, no la página. */
+
+const cuenta = document.getElementById('cuenta');
+let cuentaFin = 0, cuentaReloj = null;
+
+function tickCuenta() {
+  const s = Math.max(0, Math.ceil((cuentaFin - performance.now()) / 1000));
+  const m = Math.floor(s / 60), seg = s % 60;
+  cuenta.textContent = `${m}:${String(seg).padStart(2, '0')}`;
+}
+
+function pintarCuenta(m) {
+  clearInterval(cuentaReloj);
+  cuenta.hidden = m.queda == null;
+  if (m.queda == null) return;
+  cuentaFin = performance.now() + m.queda * 1000;
+  cuenta.title = 'Temporizador';
+  tickCuenta();
+  cuentaReloj = setInterval(tickCuenta, 250);
 }
 
 function pintarFichaje(m) {

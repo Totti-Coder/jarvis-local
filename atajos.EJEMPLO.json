@@ -30,6 +30,7 @@
     "              {\"cronometro\": \"empezar\"}   empezar, pausar, reiniciar...",
     "              {\"horas\": \"Acme\"}           empieza a contar para ese cliente",
     "              {\"horas\": \"parar\"}          deja de contar",
+    "              {\"temporizador\": \"25\"}      cuenta atras en minutos, y avisa",
     "  dice      lo que contesta al acabar (opcional)",
     "",
     "  Para un comando, crea un atajo y llamalo desde la rutina: asi los",
@@ -129,9 +130,12 @@
         },
         {
           "cronometro": "empezar"
+        },
+        {
+          "temporizador": "25"
         }
       ],
-      "dice": "Modo trabajo. A por ello."
+      "dice": "Modo trabajo. Veinticinco minutos de foco, a por ello."
     },
     {
       "nombre": "hora de comer",

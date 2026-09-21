@@ -18,6 +18,7 @@ pieza que ya existe con su propia protección:
     atajo       un atajo tuyo de atajos.json, por su nombre
     cronometro  empezar, pausar, reiniciar...
     horas       un cliente, o "parar"
+    temporizador  minutos, en cifra: "25" es un pomodoro
 
 Para ejecutar un comando arbitrario, se crea un ATAJO (donde el comando se
 escribe entero y revisado) y la rutina lo llama por su nombre. Así hay un
@@ -42,7 +43,7 @@ import sistema
 
 FICHERO = sistema.ATAJOS
 
-TIPOS = ("abrir", "cerrar", "atajo", "cronometro", "horas")
+TIPOS = ("abrir", "cerrar", "atajo", "cronometro", "horas", "temporizador")
 
 # Lo que se dice delante del nombre sin cambiar lo que se pide
 _DELANTE = {"jarvis", "vale", "venga", "oye", "pon", "ponme", "activa",
@@ -81,6 +82,10 @@ def cargar(fichero=None):
             tipo, valor = next(iter(p.items()))
             if tipo not in TIPOS or not isinstance(valor, str) or not valor.strip():
                 error = f"paso no permitido: {p}"
+                break
+            if tipo == "temporizador" and not (valor.strip().isdigit()
+                                                and 0 < int(valor) <= 24 * 60):
+                error = f"el temporizador va en minutos, de 1 a 1440: {p}"
                 break
             if tipo == "atajo" and _normal(valor) in peligrosos:
                 error = f"el atajo {valor!r} pide confirmación y no puede ir en una rutina"

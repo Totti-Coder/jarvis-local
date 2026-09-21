@@ -1190,5 +1190,118 @@
    "estado",
    "inactivo"
   ]
+ ],
+ "temporizador_pon": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "temporizador",
+   1500,
+   1500
+  ],
+  [
+   "herramienta",
+   "temporizador"
+  ],
+  [
+   "token",
+   "Pomodoro en marcha: veinticinco minutos. Te aviso al acabar."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "temporizador_queda": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "temporizador"
+  ],
+  [
+   "token",
+   "Quedan 10 minutos."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "temporizador_sin": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "token",
+   "Claro. "
+  ],
+  [
+   "token",
+   "Aquí va. "
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "token",
+   "Fin."
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "temporizador_cancela_nada": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "temporizador"
+  ],
+  [
+   "token",
+   "No había ningún temporizador."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
  ]
 }

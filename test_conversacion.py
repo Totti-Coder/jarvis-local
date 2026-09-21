@@ -29,6 +29,7 @@ Uso:
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -102,6 +103,8 @@ def resumir(mensajes):
             salida.append(("estado", m.get("valor")))
         elif t == "herramienta":
             salida.append(("herramienta", m.get("nombre")))
+        elif t == "temporizador":
+            salida.append(("temporizador", m.get("queda"), m.get("total")))
         elif t == "horas":
             salida.append(("horas", m.get("cliente")))
         elif t == "crono":
@@ -177,6 +180,12 @@ ESCENARIOS = [
     ("horas_anade_nuevo_si", "sí",                          (None, None), ("cliente_nuevo", {"nombre": "Iberdrola", "anadir": (10800, "ayer trabaje 3 horas para iberdrola")})),
     ("horas_borrar_pregunta", "Borra la última sesión",     (None, None), None),
     ("horas_borrar_si",     "sí",                           (None, None), ("borrar_sesion", "la ultima")),
+    # Temporizador: frases fijas, sin router. "¿Cuánto queda?" solo con uno
+    # en marcha; sin él, sigue el camino de siempre
+    ("temporizador_pon",    "Ponme un pomodoro",            ("abrir_programa", {"nombre": "pomodoro"}), None),
+    ("temporizador_queda",  "¿Cuánto queda?",               (None, None), None),
+    ("temporizador_sin",    "¿Cuánto queda?",               (None, None), None),
+    ("temporizador_cancela_nada", "Cancela el temporizador", (None, None), None),
 ]
 
 # El reloj de los escenarios. Sin fijarlo, "el 1 de septiembre" seria de
@@ -238,6 +247,9 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre == "temporizador_queda":
+        # Diez minutos (y medio segundo de margen: se dice a la baja)
+        conv.temporizador = {"fin": time.monotonic() + 600.5, "segundos": 1500}
     if nombre == "crono_panel_para":
         # En marcha desde hace 75 segundos, con un reloj que no se mueve
         conv.crono = servidor.cronometro.Cronometro(reloj=lambda: 100.0)
