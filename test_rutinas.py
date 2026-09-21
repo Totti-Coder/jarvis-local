@@ -100,6 +100,24 @@ for frase, esperada in [
     comprueba(f"{frase!r:<44} -> {obtenida}", obtenida == esperada, f"esperaba {esperada}")
 
 print("\n" + "=" * 72)
+print("CÓMO SE ENSEÑA CADA PASO EN EL PANEL")
+print("=" * 72)
+for (tipo, valor), esperado in [
+    (("abrir", "vs code"), "Abrir vs code"),
+    (("cerrar", "discord"), "Cerrar discord"),
+    (("atajo", "abre github"), "Atajo · abre github"),
+    (("cronometro", "empezar"), "Cronómetro · empezar"),
+    (("horas", "Acme"), "Horas · Acme"),
+    (("horas", "parar"), "Horas · parar"),
+    (("temporizador", "25"), "Pomodoro · 25:00"),
+    (("temporizador", "10"), "Temporizador · 10:00"),
+]:
+    r = rutinas.etiqueta(tipo, valor)
+    comprueba(f"{tipo}={valor!r:<14} -> {r}", r == esperado, f"esperaba {esperado!r}")
+comprueba("todos los pasos de una rutina cargada tienen etiqueta",
+          all(rutinas.etiqueta(t, v) for r in cargadas for t, v in r["pasos"]))
+
+print("\n" + "=" * 72)
 print(f"  {'TODO BIEN' if not fallos else str(len(fallos)) + ' FALLOS'}")
 print("=" * 72)
 sys.exit(1 if fallos else 0)

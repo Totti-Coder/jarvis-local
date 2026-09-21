@@ -62,6 +62,7 @@ _RUTINAS.write_text(json.dumps({"rutinas": [
      "pasos": [{"abrir": "vs code"}, {"cronometro": "empezar"}, {"horas": "Acme"}],
      "dice": "A por ello."}]}), encoding="utf-8")
 servidor.rutinas.FICHERO = _RUTINAS
+servidor.PAUSA_PASO_S = 0            # la pausa es para verlo, no para probarlo
 
 AQUI = Path(__file__).parent
 GUARDADO = AQUI / "test_conversacion.json"
@@ -103,6 +104,10 @@ def resumir(mensajes):
             salida.append(("estado", m.get("valor")))
         elif t == "herramienta":
             salida.append(("herramienta", m.get("nombre")))
+        elif t == "rutina":
+            salida.append(("rutina", m.get("fase"), m.get("nombre") or m.get("i"),
+                           m.get("pasos") or m.get("ok") if m.get("fase") != "fin"
+                           else m.get("fallos")))
         elif t == "temporizador":
             salida.append(("temporizador", m.get("queda"), m.get("total")))
         elif t == "horas":

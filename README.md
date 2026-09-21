@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-649_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-658_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
 </p>
 
@@ -198,7 +198,8 @@ mover Whisper a CPU.
 - Apagar/reiniciar **con confirmación**
 - Volumen, bloqueo, capturas
 - Tus propios atajos (`atajos.json`)
-- **Rutinas:** *"modo trabajo"* abre, cierra y pone el cronómetro
+- **Rutinas:** *"modo trabajo"* abre, cierra y pone el cronómetro, y
+  cada paso se marca en pantalla según termina
 - Lista blanca, nunca comandos libres
 
 </td>
@@ -206,7 +207,8 @@ mover Whisper a CPU.
 </table>
 
 **Y además:** ⏳ **temporizador** (*"ponme un pomodoro"*, *"avísame en 10
-minutos"*, *"¿cuánto queda?"*): avisa al acabar, pero nunca a media frase tuya · 💼 **horas por cliente** (*"empiezo con Acme"*, *"¿cuántas horas
+minutos"*, *"¿cuánto queda?"*): el aro exterior del núcleo se convierte en un
+reloj que se va apagando, y avisa al acabar, pero nunca a media frase tuya · 💼 **horas por cliente** (*"empiezo con Acme"*, *"¿cuántas horas
 llevo este mes?"*, exporta a CSV; entiende que *"Akme"* es Acme, se ve en la
 barra y, si te olvidas de parar, te lo recuerda y acepta *"terminé a las 7"*; se corrige hablando: *"ayer trabajé 2 horas para
 García"*, *"quítale media hora a Acme"*, *"borra la última sesión"*) · ⏱️ cronómetro por voz o con botones (*"páralo"*, *"¿cuánto
@@ -377,12 +379,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**649 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**658 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 97 frases reales al 100 %**, que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 514 de los 649 casos**, sin instalar una sola dependencia:
+**En CI corren 523 de los 658 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -524,7 +526,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_cronometro.py      # Órdenes y tiempo contado       (88 casos)
 ├── test_guardia.py         # Origin, Host, PIN              (31 casos)
 ├── test_horas_cliente.py   # Fichar, corregir, olvidos, CSV (161 casos)
-├── test_rutinas.py         # Pasos permitidos y frases      (26 casos)
+├── test_rutinas.py         # Pasos, frases y etiquetas      (35 casos)
 ├── test_temporizador.py    # Qué frase lo pone y cuál no    (33 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │

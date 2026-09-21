@@ -993,10 +993,44 @@
    "pensando"
   ],
   [
+   "rutina",
+   "inicio",
+   "modo trabajo",
+   [
+    "Abrir vs code",
+    "Cronómetro · empezar",
+    "Horas · Acme"
+   ]
+  ],
+  [
+   "rutina",
+   "paso",
+   0,
+   true
+  ],
+  [
    "crono",
    true,
    true,
    0.0
+  ],
+  [
+   "rutina",
+   "paso",
+   1,
+   true
+  ],
+  [
+   "rutina",
+   "paso",
+   2,
+   true
+  ],
+  [
+   "rutina",
+   "fin",
+   null,
+   0
   ],
   [
    "horas",

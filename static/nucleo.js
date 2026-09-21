@@ -217,6 +217,31 @@ barrido.rotation.x = Math.PI / 2;
 nucleo.add(barrido);
 
 // ---------------------------------------------------------------
+// CUENTA ATRÁS
+// Con un temporizador en marcha, el aro de arcos decorativos se apaga y en
+// su sitio aparece un reloj: 72 marcas que se van apagando desde arriba,
+// en el sentido de las agujas. El adorno pasa a decir algo.
+// ---------------------------------------------------------------
+
+const MARCAS = 72;
+const RADIO_MARCAS = 3.75;           // el mismo radio que los arcos a los que sustituye
+const marcas = [];
+const geomMarca = new THREE.BoxGeometry(0.035, 0.22, 0.035);
+
+for (let i = 0; i < MARCAS; i++) {
+  const a = Math.PI / 2 - (i / MARCAS) * Math.PI * 2;
+  const m = new THREE.Mesh(geomMarca, new THREE.MeshBasicMaterial({
+    color: CIAN, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  m.position.set(Math.cos(a) * RADIO_MARCAS, Math.sin(a) * RADIO_MARCAS, 0);
+  m.rotation.z = a - Math.PI / 2;    // apuntando hacia fuera, como las de un reloj
+  nucleo.add(m);
+  marcas.push(m);
+}
+let hayCuenta = 0;                   // 0..1, para entrar y salir suave
+
+// ---------------------------------------------------------------
 // ANIMACIÓN
 // ---------------------------------------------------------------
 
@@ -274,9 +299,25 @@ function animar() {
     a.material.color.copy(colorActual);
     a.material.opacity = 0.35 + nivelSuave * 0.4;
   }
+  // --- cuenta atrás: sustituye a los arcos mientras dura ---
+  const cuenta = J.cuenta;
+  hayCuenta += ((cuenta ? 1 : 0) - hayCuenta) * Math.min(1, dt * 4);
+  const queda = cuenta
+    ? Math.max(0, (cuenta.fin - performance.now()) / 1000) / cuenta.total : 0;
+  const encendidas = Math.ceil(queda * MARCAS);
+  for (let i = 0; i < MARCAS; i++) {
+    let op = 0.12;                                   // la pista, apagada
+    if (i < encendidas) {
+      // la última encendida late: es el segundero
+      op = i === encendidas - 1 ? 0.45 + 0.5 * Math.abs(Math.sin(t * 3)) : 0.95;
+    }
+    marcas[i].material.opacity = op * hayCuenta;
+  }
+
   for (let i = 0; i < arcos.length; i++) {
     arcos[i].rotation.z -= dt * 0.35 * empuje;
     arcos[i].material.color.copy(colorActual);
+    arcos[i].material.opacity = 0.8 * (1 - hayCuenta);
   }
 
   // --- barras del espectro ---

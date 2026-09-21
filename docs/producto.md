@@ -83,7 +83,7 @@ Esta lista pesa tanto como la de funcionalidades.
 | Qué | Hoy |
 |---|---|
 | Acierto del router (elegir la acción correcta) | **97/97** frases reales |
-| Tests | **649 casos**, 514 en el CI |
+| Tests | **658 casos**, 523 en el CI |
 | Latencia de voz a respuesta | **~0,8 s** |
 | APIs de pago | **0** |
 | Conexiones ajenas aceptadas | **0** (antes, todas: [seguridad](seguridad.md)) |

@@ -69,6 +69,12 @@ print(f"  {calendario.estado()}")
 print(f"  {correo.estado()}")
 
 
+# Pausa entre los pasos de una rutina. Abrir un programa tarda milisegundos,
+# y sin ella el panel pasaba de vacío a todo hecho sin que se viera nada.
+# No retrasa ningún paso respecto a lo que se enseña: cada marca sale
+# cuando ese paso ha terminado de verdad.
+PAUSA_PASO_S = 0.18
+
 # Cada cuanto se mira si toca avisar de algo. Mas a menudo no aporta: los
 # avisos van con diez minutos de antelacion.
 AVISO_CADA_S = 20
@@ -116,7 +122,14 @@ async def solo_hosts_conocidos(peticion, siguiente):
     # propio nombre en Host, y aquí se queda.
     if guardia._nombre_de(peticion.headers.get("host")) not in guardia.HOSTS:
         return PlainTextResponse("Host no permitido", status_code=400)
-    return await siguiente(peticion)
+    respuesta = await siguiente(peticion)
+    # Sin cabecera de caché, el navegador reutilizaba nucleo.js a su criterio:
+    # tras actualizarlo, la página se recargaba sola (huella de versión) pero
+    # con el .js viejo. "no-cache" no es "no guardar": guarda, pero pregunta
+    # cada vez, y si no ha cambiado la respuesta es un 304 casi vacío.
+    if peticion.url.path.startswith("/static/"):
+        respuesta.headers["Cache-Control"] = "no-cache"
+    return respuesta
 
 
 @app.get("/")
@@ -766,7 +779,10 @@ class Conversacion:
         cuál falló: que no se abra Spotify no es motivo para no empezar
         a contar horas."""
         fallos = []
-        for tipo, valor in rutina["pasos"]:
+        await self.enviar(tipo="rutina", fase="inicio", nombre=rutina["nombre"],
+                          pasos=[rutinas.etiqueta(t, v) for t, v in rutina["pasos"]])
+        for i, (tipo, valor) in enumerate(rutina["pasos"]):
+            antes = len(fallos)
             try:
                 if tipo == "abrir":
                     r = await asyncio.to_thread(sistema.abrir_programa, valor)
@@ -783,9 +799,9 @@ class Conversacion:
                 elif tipo == "cronometro":
                     if valor not in cronometro.ACCIONES:
                         fallos.append(f"el cronómetro ({valor})")
-                        continue
-                    self.crono.aplicar(valor)
-                    await self.enviar(tipo="crono", **self.crono.estado())
+                    else:
+                        self.crono.aplicar(valor)
+                        await self.enviar(tipo="crono", **self.crono.estado())
                 elif tipo == "temporizador":
                     await self.poner_temporizador(int(valor) * 60)
                 elif tipo == "horas":
@@ -796,6 +812,9 @@ class Conversacion:
             except Exception as e:
                 print(f"[rutina] {rutina['nombre']}: {tipo} {valor!r} -> {e}")
                 fallos.append(f"{tipo} {valor}")
+            await self.enviar(tipo="rutina", fase="paso", i=i, ok=len(fallos) == antes)
+            await asyncio.sleep(PAUSA_PASO_S)
+        await self.enviar(tipo="rutina", fase="fin", fallos=len(fallos))
 
         await self.enviar_horas()
         frase = rutina["dice"]

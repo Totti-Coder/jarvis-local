@@ -101,6 +101,24 @@ def cargar(fichero=None):
     return salida
 
 
+def etiqueta(tipo, valor):
+    """Cómo se enseña un paso en el panel mientras la rutina corre."""
+    if tipo == "abrir":
+        return f"Abrir {valor}"
+    if tipo == "cerrar":
+        return f"Cerrar {valor}"
+    if tipo == "atajo":
+        return f"Atajo · {valor}"
+    if tipo == "cronometro":
+        return f"Cronómetro · {valor}"
+    if tipo == "horas":
+        return "Horas · parar" if valor.lower() in ("parar", "terminar") else f"Horas · {valor}"
+    if tipo == "temporizador":
+        minutos = int(valor)
+        return "Pomodoro · 25:00" if minutos == 25 else f"Temporizador · {minutos}:00"
+    return f"{tipo} · {valor}"
+
+
 def buscar(texto, rutinas=None):
     """La rutina que se pide, o None. El nombre tiene que ser la frase
     entera, quitando solo "pon", "activa", "el"... de delante."""

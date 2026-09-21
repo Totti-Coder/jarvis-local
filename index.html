@@ -32,6 +32,43 @@ body{
   transition:background-image .6s ease;
 }
 
+/* ---------- fondo de HUD ----------
+   Rejilla muy tenue que se desvanece hacia los bordes, y viñeta. Fija y
+   sin eventos: es decorado, no puede tapar un clic. */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    linear-gradient(rgba(86,217,232,.035) 1px, transparent 1px) 0 0/44px 44px,
+    linear-gradient(90deg, rgba(86,217,232,.035) 1px, transparent 1px) 0 0/44px 44px;
+  -webkit-mask-image:radial-gradient(ellipse at 50% 40%, #000 20%, transparent 75%);
+          mask-image:radial-gradient(ellipse at 50% 40%, #000 20%, transparent 75%);
+}
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%);
+}
+body > *{position:relative;z-index:1}
+
+/* ---------- marco de HUD ----------
+   Borde casi invisible y las cuatro esquinas encendidas. Cuatro pares de
+   degradados en vez de pseudo-elementos: así el panel puede seguir usando
+   ::before y ::after para lo suyo. */
+.hud{
+  --esq:var(--cian);--l:12px;
+  border:1px solid rgba(86,217,232,.14);
+  background:
+    linear-gradient(var(--esq),var(--esq)) top left/var(--l) 1px no-repeat,
+    linear-gradient(var(--esq),var(--esq)) top left/1px var(--l) no-repeat,
+    linear-gradient(var(--esq),var(--esq)) top right/var(--l) 1px no-repeat,
+    linear-gradient(var(--esq),var(--esq)) top right/1px var(--l) no-repeat,
+    linear-gradient(var(--esq),var(--esq)) bottom left/var(--l) 1px no-repeat,
+    linear-gradient(var(--esq),var(--esq)) bottom left/1px var(--l) no-repeat,
+    linear-gradient(var(--esq),var(--esq)) bottom right/var(--l) 1px no-repeat,
+    linear-gradient(var(--esq),var(--esq)) bottom right/1px var(--l) no-repeat,
+    var(--fondo, rgba(7,13,20,.86));
+  backdrop-filter:blur(2px);
+}
+
 /* ---------- barra superior ---------- */
 .barra{
   display:flex;justify-content:space-between;align-items:baseline;
@@ -199,7 +236,6 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 .crono{
   position:fixed;top:64px;right:26px;z-index:20;
   width:230px;padding:14px 16px 14px;
-  background:#070d14;border:1px solid var(--cian-tenue);border-radius:4px;
   box-shadow:0 0 30px rgba(86,217,232,.08);
   display:flex;flex-direction:column;gap:10px;
   animation:entrar .3s ease both;
@@ -237,6 +273,43 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 .crono .cerrar{flex:none;border:none;padding:2px 4px;font-size:16px;
   letter-spacing:0;color:var(--cian-tenue)}
 
+/* ---------- secuencia de una rutina ----------
+   Cada paso se marca cuando el servidor dice que ha TERMINADO, no con una
+   animación de adorno: lo que se ve es lo que ha pasado. */
+.secuencia{
+  position:fixed;top:64px;left:26px;z-index:20;width:290px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:10px;
+  animation:entrar .3s ease both;
+}
+.secuencia[hidden]{display:none}
+.secuencia h2{
+  font-family:'Barlow Condensed',sans-serif;font-weight:500;
+  font-size:11px;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--cian-tenue);display:flex;gap:10px;align-items:baseline;
+}
+.secuencia h2 b{color:var(--cian);font-weight:500}
+.secuencia ol{list-style:none;display:flex;flex-direction:column;gap:6px}
+.secuencia li{
+  display:grid;grid-template-columns:14px 1fr auto;gap:8px;align-items:baseline;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#5c7a84;
+  transition:color .2s;
+}
+.secuencia li .marca{color:var(--cian-tenue)}
+.secuencia li .res{font-size:11px;color:var(--cian-tenue)}
+.secuencia li.activo{color:var(--texto)}
+.secuencia li.activo .marca{color:var(--cian);animation:parpadeo .5s steps(2) infinite}
+.secuencia li.hecho{color:#d4eef4}
+.secuencia li.hecho .marca,.secuencia li.hecho .res{color:var(--cian)}
+.secuencia li.fallo{color:#c98a8a}
+.secuencia li.fallo .marca,.secuencia li.fallo .res{color:#e06868}
+.sec-estado{
+  font-family:'Barlow Condensed',sans-serif;font-size:11px;
+  letter-spacing:.3em;text-transform:uppercase;color:var(--cian-tenue);
+  border-top:1px solid rgba(86,217,232,.12);padding-top:8px;
+}
+.sec-estado.completa{color:var(--cian)}
+.sec-estado.con-fallos{color:var(--ambar)}
+
 /* ---------- accesibilidad ---------- */
 :focus-visible{outline:2px solid var(--acento);outline-offset:4px}
 @media (prefers-reduced-motion:reduce){
@@ -256,6 +329,8 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
   .sobre button{flex:1;padding:14px 12px}
   .truco{display:none}
   .crono{top:12px;left:16px;right:16px;width:auto}
+  /* Encima del cronómetro y opaca: translúcida, se veía el de debajo */
+  .secuencia{top:12px;left:16px;right:16px;width:auto;z-index:25;--fondo:#070d14}
   .crono button{padding:13px 8px}
 }
 </style>
@@ -283,9 +358,17 @@ kbd{border:1px solid var(--cian-tenue);border-radius:2px;
 
 <section class="registro" id="registro" aria-live="polite"></section>
 
+<!-- Rutina en marcha: sus pasos, marcados según terminan de verdad -->
+<aside class="secuencia hud" id="secuencia" hidden aria-live="polite"
+       aria-label="Rutina en marcha">
+  <h2><span>Rutina</span><b id="sec-nombre"></b></h2>
+  <ol id="sec-pasos"></ol>
+  <p class="sec-estado" id="sec-estado"></p>
+</aside>
+
 <!-- Cronómetro. Lo abre la voz ("abre el cronómetro") y se maneja con
      la voz o con estos botones. Cuenta el servidor; aquí solo se pinta. -->
-<aside class="crono" id="crono" hidden aria-label="Cronómetro">
+<aside class="crono hud" id="crono" hidden aria-label="Cronómetro">
   <h2><span>Cronómetro</span>
     <button type="button" class="cerrar" data-accion="cerrar"
             aria-label="Cerrar el cronómetro">&times;</button></h2>
@@ -550,6 +633,7 @@ const alMensaje = ev => {
   else if (m.tipo === 'crono')           pintarCrono(m);
   else if (m.tipo === 'horas')           pintarFichaje(m);
   else if (m.tipo === 'temporizador')    pintarCuenta(m);
+  else if (m.tipo === 'rutina')          pintarRutina(m);
 };
 
 /* ---------- fichaje (horas por cliente) ----------
@@ -582,11 +666,72 @@ function tickCuenta() {
 function pintarCuenta(m) {
   clearInterval(cuentaReloj);
   cuenta.hidden = m.queda == null;
+  // El núcleo 3D dibuja la cuenta atrás como un anillo: lo lee de aquí
+  J.cuenta = m.queda == null ? null
+           : {fin: performance.now() + m.queda * 1000, total: m.total};
   if (m.queda == null) return;
   cuentaFin = performance.now() + m.queda * 1000;
   cuenta.title = 'Temporizador';
   tickCuenta();
   cuentaReloj = setInterval(tickCuenta, 250);
+}
+
+/* ---------- rutina en marcha ---------- */
+
+const secuencia = document.getElementById('secuencia');
+const secPasos = document.getElementById('sec-pasos');
+const secEstado = document.getElementById('sec-estado');
+let secOcultar = null;
+const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* El texto se "descifra": letras al azar que se van fijando. Dura 300 ms,
+   y con movimiento reducido no se hace. */
+function descifrar(el, texto) {
+  if (sinMovimiento) { el.textContent = texto; return; }
+  const signos = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789·:/';
+  const inicio = performance.now();
+  (function paso() {
+    const avance = Math.min(1, (performance.now() - inicio) / 300);
+    const fijas = Math.floor(texto.length * avance);
+    el.textContent = texto.slice(0, fijas) + [...texto.slice(fijas)]
+      .map(c => c === ' ' ? ' ' : signos[Math.floor(Math.random() * signos.length)])
+      .join('');
+    if (avance < 1) requestAnimationFrame(paso);
+  })();
+}
+
+function pintarRutina(m) {
+  if (m.fase === 'inicio') {
+    clearTimeout(secOcultar);
+    document.getElementById('sec-nombre').textContent = m.nombre;
+    secPasos.innerHTML = '';
+    m.pasos.forEach((texto, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="marca">▸</span><span class="txt"></span>' +
+                     '<span class="res">···</span>';
+      if (i === 0) li.classList.add('activo');
+      secPasos.appendChild(li);
+      setTimeout(() => descifrar(li.querySelector('.txt'), texto), i * 60);
+    });
+    secEstado.className = 'sec-estado';
+    secEstado.textContent = 'Ejecutando';
+    secuencia.hidden = false;
+  } else if (m.fase === 'paso') {
+    const li = secPasos.children[m.i];
+    if (!li) return;
+    li.classList.remove('activo');
+    li.classList.add(m.ok ? 'hecho' : 'fallo');
+    li.querySelector('.res').textContent = m.ok ? '✓' : '✗';
+    secPasos.children[m.i + 1]?.classList.add('activo');
+  } else if (m.fase === 'fin') {
+    const total = secPasos.children.length;
+    secEstado.className = 'sec-estado ' + (m.fallos ? 'con-fallos' : 'completa');
+    secEstado.textContent = m.fallos
+      ? `${total - m.fallos}/${total} · ${m.fallos} fallo${m.fallos > 1 ? 's' : ''}`
+      : `Completada · ${total}/${total}`;
+    // Se queda a la vista lo justo para leerlo
+    secOcultar = setTimeout(() => { secuencia.hidden = true; }, 6000);
+  }
 }
 
 function pintarFichaje(m) {
