@@ -273,6 +273,19 @@ Los modelos de Whisper se descargan solos la primera vez. **Ya funciona**:
 agenda, conversación, búsqueda web y control del PC, sin registrarte en ningún
 sitio.
 
+**Con doble clic, sin terminal** (Windows):
+
+```bash
+python lanzador.pyw --instalar   # una vez: "Jarvis" y "Apagar Jarvis" en el escritorio
+```
+
+"Jarvis" arranca Ollama si hace falta, el servidor sin consola (lo que
+imprime va a `jarvis.log`) y abre la interfaz como aplicación, en su propia
+ventana. Si ya estaba en marcha, solo abre la ventana. No es un `.exe` a
+propósito: uno con PyInstaller llevaría dentro varios GB de CUDA, habría que
+regenerarlo con cada cambio y los antivirus desconfían de los que no van
+firmados.
+
 **Desde el móvil** (misma wifi), dos comandos más:
 
 ```bash
@@ -284,8 +297,10 @@ El móvil avisará de que la conexión no es privada: el certificado lo firma
 tu PC y no hay autoridad que pueda certificar una IP privada. Continúa y
 acepta el permiso del micrófono.
 
-> [!WARNING]
-> Con `--red` no hay autenticación: cualquiera en esa wifi puede usarlo.
+> [!NOTE]
+> Con `--red`, el móvil pide un **PIN de 6 cifras** que sale en la pantalla
+> del PC. Cambia en cada arranque y se bloquea tras 5 fallos
+> ([por qué](docs/seguridad.md)).
 
 <details>
 <summary><b>🔑 Google Calendar y Gmail (opcional)</b> — lo único que pide credenciales</summary>
@@ -482,6 +497,7 @@ memoria.py      SQLite + intérprete de fechas en español
 sistema.py      Control del PC: lista blanca, Steam, atajos
 correo.py       Gmail: leer, resumir, redactar, enviar
 certificado.py  HTTPS autofirmado, para el micrófono del móvil
+lanzador.pyw    Doble clic: arranca sin consola y abre la ventana
 cronometro.py   Cronómetro: órdenes de voz sin pasar por el modelo
 horas.py        Horas por cliente: sesiones en SQLite y CSV
 rutinas.py      Una frase, varios pasos de una lista cerrada

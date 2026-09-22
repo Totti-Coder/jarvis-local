@@ -34,3 +34,6 @@ venv/
 .idea/
 .claude/
 _audio/
+
+# Registro del servidor cuando arranca con lanzador.pyw
+jarvis.log
