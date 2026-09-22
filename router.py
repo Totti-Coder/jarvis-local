@@ -335,9 +335,24 @@ def _sin_tildes(s):
 
 
 def es_pregunta(t):
-    """¿La frase (ya sin tildes y en minúsculas) es una pregunta?"""
+    """¿La frase (ya sin tildes y en minúsculas) es una pregunta?
+
+    No basta con mirar los signos: Whisper los pierde a menudo, sobre todo
+    si la entonación no sube al final (eval_router.py --voz: "¿tengo algo
+    esta noche?" llegó como "Tengo algo esta noche." y se APUNTÓ como
+    tarea). Por eso también cuenta la forma: "tengo algo", "hay algo".
+    """
     return t.startswith("¿") or t.endswith("?") or bool(
-        re.match(r"^(que|como|cuando|cuanto|cual|quien|donde|por que)\b", t))
+        re.match(r"^(que|como|cuando|cuanto|cual|quien|donde|por que)\b", t)
+        or es_consulta_de_agenda(t))
+
+
+def es_consulta_de_agenda(t):
+    """"Tengo algo esta noche", "hay algo mañana", "me queda algo": con o
+    sin signos, preguntan por la agenda. Nadie apunta nada diciendo así."""
+    return bool(re.match(
+        r"^(?:y |oye |jarvis |entonces )*(?:tengo|tenemos|hay|me queda|queda)"
+        r" (?:algo|alguna|algun|planes|tareas|cosas|pendiente)\b", t.lstrip("¿")))
 
 
 def parece_encargo(frase):
@@ -646,9 +661,18 @@ def pide_apagar(frase):
     t = _sin_tildes(frase)
     if es_pregunta(t) and not re.search(r"\b(puedes|podrias|me)\b", t):
         return False          # "¿se apaga solo?" no es una orden
+    # Con "se" delante es algo que LE PASA al ordenador, no una orden. Hacía
+    # falta sin depender de los signos: Whisper escribió "Se apaga solo el
+    # ordenador." sin interrogación, y el router propuso apagarlo
+    if re.search(r"\bse (?:me |te |le |nos |les )?(?:apaga|apago|apagara|reinicia|"
+                 r"reinicio|suspende|bloquea|bloqueo)\b", t):   # "se ME reinicia"
+        return False
+    # Con los enclíticos: "¿puedes apagarME el ordenador?" es una petición
+    # legítima, y sin "apagarme" en la lista se ignoraba
     return bool(re.search(
-        r"\b(apaga|apagame|apagar|apague|reinicia|reiniciame|reiniciar|"
-        r"reinicie|suspende|suspender)\b", t))
+        r"\b(apaga|apagame|apagalo|apagar|apagarme|apagarlo|apague|apagas|"
+        r"reinicia|reiniciame|reinicialo|reiniciar|reiniciarme|reiniciarlo|"
+        r"reinicie|reinicias|suspende|suspender)\b", t))
 
 
 def prompt_router():
@@ -712,6 +736,10 @@ def enrutar(pregunta):
     # Red de seguridad: apuntar es lo único que deja rastro permanente en la
     # base de datos, así que es donde más molesta equivocarse.
     if nombre == "anadir_tarea":
+        # "Tengo algo esta noche" sin signos: es consultar, no apuntar
+        if es_consulta_de_agenda(_sin_tildes(pregunta).strip()):
+            print(f"[router] anadir_tarea -> listar_tareas: {pregunta!r} pregunta por la agenda")
+            return "listar_tareas", {"cuando": momento_en(pregunta)}
         if not parece_encargo(pregunta):
             print(f"[router] descarto anadir_tarea: {pregunta!r} es una pregunta")
             return None, None

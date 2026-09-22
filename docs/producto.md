@@ -64,7 +64,7 @@ Cada una salió de un fallo real o de una medición, no de una intuición.
 | **El cronómetro no pasa por el modelo** | *"Para"* tiene que parar ya. Un 8B tarda un segundo en decidir lo que una lista de verbos resuelve sin fallar |
 | **Busca en internet solo cuando hace falta** | Una búsqueda cuesta segundos. Para *"¿quién pintó Las Meninas?"* sobra |
 | **Te avisa sin preguntar, pero nunca te interrumpe** | Un recordatorio que pisa lo que estás diciendo es peor que no tenerlo |
-| **El router se mide, no se intuye** | 97 frases reales al 100 %. Cada error encontrado entra como caso permanente |
+| **El router se mide, no se intuye** | 103 frases reales al 100 % (98 % dichas por voz). Cada error encontrado entra como caso permanente |
 
 ## Lo que NO se construye (y por qué)
 
@@ -82,7 +82,7 @@ Esta lista pesa tanto como la de funcionalidades.
 
 | Qué | Hoy |
 |---|---|
-| Acierto del router (elegir la acción correcta) | **97/97** frases reales |
+| Acierto del router (elegir la acción correcta) | **103/103** frases reales · **98 %** dichas por voz |
 | Órdenes fijas entendidas (cronómetro, temporizador, horas, rutinas) | **72/72** en texto · **94 %** dichas por voz sintética |
 | Tests | **718 casos**, 574 en el CI |
 | Latencia de voz a respuesta | **~0,8 s** |

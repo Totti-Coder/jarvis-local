@@ -6,6 +6,9 @@ siempre, pero "casi" no es medible a ojo: hace falta un número.
 Uso:
     python eval_router.py            resumen y fallos
     python eval_router.py --todo     muestra también los aciertos
+    python eval_router.py --voz      las frases DICHAS por Piper y oídas por
+                                     Whisper: el router recibe lo que Whisper
+                                     escribe, con sus errores, como en el uso real
 """
 
 import sys
@@ -46,6 +49,10 @@ CASOS = [
     ("¿Cuándo tengo el dentista?",                   "listar_tareas", "consultar"),
     ("¿A qué hora es la reunión?",                   "listar_tareas", "consultar"),
     ("¿Cuándo tengo lo del banco?",                  "listar_tareas", "consultar"),
+    # SIN signos: así las escribe Whisper cuando la entonación no sube
+    # (eval_router.py --voz). "Tengo algo esta noche." se apuntaba como tarea
+    ("Tengo algo esta noche",                        "listar_tareas", "consultar"),
+    ("Hay algo mañana por la tarde",                 "listar_tareas", "consultar"),
 
     # ---- completar ----
     ("Ya he comprado el pan",                        "completar_tarea", "completar"),
@@ -99,6 +106,10 @@ CASOS = [
     ("Bloquea la pantalla",                          "control_sistema", "sistema"),
     ("Apaga el ordenador",                           "control_sistema", "sistema"),
     ("Cancela el apagado",                           "control_sistema", "sistema"),
+    # peticiones con pronombre pegado: "apagarME" no estaba en la lista y se
+    # ignoraban (siguen pidiendo confirmación antes de apagar)
+    ("¿Puedes apagarme el ordenador?",               "control_sistema", "sistema"),
+    ("¿Me reinicias el ordenador?",                  "control_sistema", "sistema"),
 
     # ---- correo ----
     ("Mándale un correo a Ana diciéndole que llego tarde", "enviar_correo", "correo"),
@@ -120,6 +131,8 @@ CASOS = [
     # estas mencionan apagar pero NO son ordenes: apagar es irreversible
     ("El ordenador va muy lento",                    None, "charla"),
     ("¿Se apaga solo el ordenador?",                 None, "charla"),
+    ("Se apaga solo el ordenador",                   None, "charla"),   # sin signos
+    ("Se me reinicia el portátil cada dos por tres", None, "charla"),
     ("Ayer se me apagó el ordenador",                None, "charla"),
     ("El PC se calienta mucho",                      None, "charla"),
     ("¿Qué tal has pasado el día?",                  None, "charla"),
@@ -143,6 +156,10 @@ CASOS = [
 ]
 
 ver_todo = "--todo" in sys.argv
+con_voz = "--voz" in sys.argv
+if con_voz:
+    from eval_ordenes import transcriptor
+    oir = transcriptor()
 
 aciertos = 0
 por_categoria = Counter()
@@ -150,12 +167,14 @@ total_categoria = Counter()
 fallos = []
 
 print("=" * 74)
-print(f"EVALUACIÓN DEL ROUTER   ({len(CASOS)} frases, modelo {ajustes.MODELO_LLM})")
+print(f"EVALUACIÓN DEL ROUTER   ({len(CASOS)} frases, modelo {ajustes.MODELO_LLM}"
+      f"{', con voz' if con_voz else ''})")
 print("=" * 74)
 
 for frase, esperada, cat in CASOS:
+    texto = oir(frase) if con_voz else frase
     try:
-        obtenida, args = router.enrutar(frase)
+        obtenida, args = router.enrutar(texto)
     except Exception as e:
         obtenida, args = f"ERROR:{type(e).__name__}", {}
 
@@ -169,6 +188,8 @@ for frase, esperada, cat in CASOS:
     if ver_todo or not ok:
         marca = "OK " if ok else "MAL"
         print(f"  {marca} [{cat:<9}] {frase[:44]:<46} -> {obtenida or 'conversación'}")
+        if con_voz and texto != frase:
+            print(f"      {'':<11} oyó: {texto!r}")
         if not ok:
             print(f"      {'':<11} esperaba: {esperada or 'conversación'}")
 
