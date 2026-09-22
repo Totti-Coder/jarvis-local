@@ -35,6 +35,13 @@ for frase, activo, esperado in [
     ("Avísame en 10 minutos",                  False, ("poner", 600)),
     ("Avísame en diez minutos por favor",      False, ("poner", 600)),
     ("Avísame dentro de un cuarto de hora",    False, ("poner", 900)),
+    # la frase real que antes acababa en "Te lo haré" y sin aviso
+    ("¿Me puedes avisar a los cinco minutos?", False, ("poner", 300)),
+    ("Avísame a los 25 minutos",               False, ("poner", 1500)),
+    ("¿Me avisas en diez minutos?",            False, ("poner", 600)),
+    ("¿Puedes avisarme dentro de media hora?", False, ("poner", 1800)),
+    ("Avísame cuando pasen 20 minutos",        False, ("poner", 1200)),
+    ("En 25 minutos avísame",                  False, ("poner", 1500)),
     ("Pon un temporizador",                    False, ("sin_duracion", None)),
     ("¿Cuánto queda?",                         True,  ("consultar", None)),
     ("¿Cuánto le queda al temporizador?",      False, ("consultar", None)),
@@ -53,6 +60,11 @@ for frase, activo in [
     ("Recuérdame sacar la pizza en 10 minutos", False),
     ("Avísame en 10 minutos de sacar la pizza", False),
     ("Avísame en 10 minutos que tengo que llamar", False),
+    # "a LAS cinco" es una hora del reloj: va a la agenda
+    ("Avísame a las 5", False),
+    ("Avísame a los cinco minutos de sacar la pizza", False),
+    # sin duración no hay temporizador posible
+    ("¿Me puedes avisar cuando llegue Ana?", False),
     # hablar DEL pomodoro no pide uno
     ("¿Qué es un pomodoro?", False),
     ("¿Qué es un temporizador?", False),

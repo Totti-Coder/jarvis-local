@@ -1337,5 +1337,63 @@
    "estado",
    "inactivo"
   ]
+ ],
+ "rutina_quitar": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "crono",
+   true,
+   false,
+   60.0
+  ],
+  [
+   "herramienta",
+   "rutina"
+  ],
+  [
+   "token",
+   "Rutina modo trabajo desactivada: cronómetro parado."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "rutina_quitar_nada": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "rutina"
+  ],
+  [
+   "token",
+   "Rutina modo trabajo desactivada."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
  ]
 }

@@ -25,8 +25,19 @@ POMODORO_MIN = 25
 _NOMBRE = r"(?:temporizador|pomodoro|cuenta atras)"
 _CANCELAR = re.compile(r"\b(?:cancela|cancelalo|quita|quitalo|para|paralo|deten|"
                        r"detenlo|borra|apaga|anula)\b(?: (?:el|la|mi))? " + _NOMBRE)
-_SOLO_AVISAME = re.compile(r"^(?:jarvis |vale |oye )*(?:avisame|dime algo|llamame) "
-                           r"(?:en|dentro de) (?P<dur>.+?)(?: por favor)?$")
+# "Avísame en 10 minutos", "¿me puedes avisar a los cinco minutos?",
+# "me avisas dentro de un cuarto de hora". "A LOS cinco minutos" sí;
+# "a LAS cinco" no: eso es una hora del reloj, y va a la agenda.
+_SOLO_AVISAME = re.compile(
+    r"^(?:jarvis |vale |oye |venga |pues )*"
+    r"(?:(?:me )?(?:puedes|podrias) )?"
+    r"(?:avisame|avisarme|avisar|me avisas|me avisaras|dime algo|llamame|me llamas)"
+    r"(?: tu)? (?:en|dentro de|a los?|cuando pasen|pasados?|despues de) "
+    r"(?P<dur>.+?)(?: por favor)?$")
+# Y al revés: "en 25 minutos avísame"
+_AVISAME_AL_FINAL = re.compile(
+    r"^(?:jarvis |vale |oye |venga )*(?:en|dentro de) (?P<dur>.+?) "
+    r"(?:avisame|me avisas|dime algo|llamame)(?: por favor)?$")
 _QUEDA = re.compile(r"\b(?:cuanto (?:le )?(?:queda|falta)|cuanto tiempo (?:queda|falta)|"
                     r"como va el " + _NOMBRE + r")\b")
 
@@ -60,7 +71,7 @@ def orden(texto, activo=False):
             return ("poner", POMODORO_MIN * 60)
         return ("sin_duracion", None)
 
-    m = _SOLO_AVISAME.match(t)
+    m = _SOLO_AVISAME.match(t) or _AVISAME_AL_FINAL.match(t)
     if m:
         segundos = duracion_en(m.group("dur"))
         # "en 10 minutos DE sacar la pizza" lleva contenido: es una tarea.

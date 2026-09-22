@@ -191,6 +191,9 @@ ESCENARIOS = [
     ("temporizador_queda",  "¿Cuánto queda?",               (None, None), None),
     ("temporizador_sin",    "¿Cuánto queda?",               (None, None), None),
     ("temporizador_cancela_nada", "Cancela el temporizador", (None, None), None),
+    # Quitar una rutina: antes caía en el router como "completar tarea"
+    ("rutina_quitar",       "Vale, quitar modo trabajo",    ("completar_tarea", {"texto": "modo trabajo"}), None),
+    ("rutina_quitar_nada",  "Quita el modo trabajo",        (None, None), None),
 ]
 
 # El reloj de los escenarios. Sin fijarlo, "el 1 de septiembre" seria de
@@ -252,6 +255,10 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre == "rutina_quitar":
+        # Con el cronómetro de la rutina todavía en marcha
+        conv.crono = servidor.cronometro.Cronometro(reloj=lambda: 100.0)
+        conv.crono.visible, conv.crono.desde = True, 40.0
     if nombre == "temporizador_queda":
         # Diez minutos (y medio segundo de margen: se dice a la baja)
         conv.temporizador = {"fin": time.monotonic() + 600.5, "segundos": 1500}

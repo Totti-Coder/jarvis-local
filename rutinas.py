@@ -119,6 +119,36 @@ def etiqueta(tipo, valor):
     return f"{tipo} · {valor}"
 
 
+# "Quita el modo trabajo", "sal del modo trabajo", "desactiva modo trabajo".
+# Sin esto la frase caía en el modelo, que la tomaba por "completar una
+# tarea" y contestaba que no la encontraba en la lista.
+_QUITAR = re.compile(
+    r"^(?:jarvis |vale |venga |oye |ya |bueno )*"
+    r"(?:quita|quitame|quitar|desactiva|desactivame|desactivar|apaga|apagar|"
+    r"sal|salir|salgo|termina|terminar|acaba|acabar|cancela|cancelar|para|parar|"
+    r"fin|fuera|deja|dejar|se acabo) (?P<resto>.+?)(?: por favor| jarvis)?$")
+
+
+def buscar_quitar(texto, rutinas=None):
+    """La rutina que se pide QUITAR, o None. El nombre, entero, como al lanzarla."""
+    m = _QUITAR.match(_normal(texto))
+    if not m:
+        return None
+    rutinas = cargar() if rutinas is None else rutinas
+    palabras = m.group("resto").split()
+    # Como al lanzarla: el nombre entero ANTES de quitar el artículo. "Quita
+    # la hora de comer" es la rutina "la hora de comer", no "hora de comer"
+    while palabras:
+        nombre = " ".join(palabras)
+        for r in rutinas:
+            if nombre in r["claves"]:
+                return r
+        if palabras[0] not in ("el", "la", "de", "del", "mi", "con"):
+            return None
+        palabras.pop(0)
+    return None
+
+
 def buscar(texto, rutinas=None):
     """La rutina que se pide, o None. El nombre tiene que ser la frase
     entera, quitando solo "pon", "activa", "el"... de delante."""

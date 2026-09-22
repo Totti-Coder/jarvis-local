@@ -279,6 +279,19 @@ async def escenarios():
     await asyncio.sleep(0.4)
     comprueba("temporizador: suena solo el segundo", len(acabados(s)) == 1, dichos(s))
 
+    # Quitar la rutina cancela SU pomodoro: después no debe sonar
+    s = SocketFalso()
+    c = servidor.Conversacion(s)
+    await c.poner_temporizador(0.2)
+    await c._quitar_rutina({"nombre": "modo trabajo", "pasos": [("cerrar", "roblox"),
+                                                                ("temporizador", "25")]},
+                           "quita el modo trabajo")
+    dicho = [m["texto"] for m in s.mensajes if m.get("tipo") == "token"]
+    await asyncio.sleep(0.4)
+    comprueba("quitar la rutina cancela su pomodoro, y lo dice",
+              dicho == ["Rutina modo trabajo desactivada: pomodoro cancelado."], dicho)
+    comprueba("y después ya no suena", acabados(s) == [], dichos(s))
+
 
 asyncio.run(escenarios())
 

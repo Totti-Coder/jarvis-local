@@ -638,6 +638,10 @@ class Conversacion:
         if pedido:
             await self._usar_horas(*pedido, pregunta, conocidos)
             return
+        quitar = await asyncio.to_thread(rutinas.buscar_quitar, pregunta)
+        if quitar:
+            await self._quitar_rutina(quitar, pregunta)
+            return
         rutina = await asyncio.to_thread(rutinas.buscar, pregunta)
         if rutina:
             await self._correr_rutina(rutina, pregunta)
@@ -773,6 +777,38 @@ class Conversacion:
         print(f"[horas] sesión {id_} borrada: {ok}")
         await self.enviar_horas()
         await self.decir_turno("Borrada." if ok else "Ya no estaba.", "horas", pregunta)
+
+    async def _quitar_rutina(self, rutina, pregunta):
+        """Deshace lo que se puede deshacer sin riesgo, y nada más.
+
+        El pomodoro se cancela, el cronómetro se para y se deja de contar
+        horas. Lo que NO se deshace, a propósito: los programas que la
+        rutina cerró no se vuelven a abrir (reabrir Roblox al salir del
+        modo trabajo no lo quiere nadie), y los que abrió no se cierran,
+        porque puede que estés trabajando en ellos.
+        """
+        hecho = []
+        for tipo, valor in rutina["pasos"]:
+            if tipo == "temporizador" and self.temporizador:
+                self.tarea_temporizador.cancel()
+                self.temporizador = self.tarea_temporizador = None
+                await self.enviar_temporizador()
+                hecho.append("pomodoro cancelado" if valor == "25" else "temporizador cancelado")
+            elif (tipo == "cronometro" and valor in ("empezar", "reanudar")
+                    and self.crono.corriendo):
+                self.crono.aplicar("pausar")
+                await self.enviar(tipo="crono", **self.crono.estado())
+                hecho.append("cronómetro parado")
+            elif tipo == "horas" and valor.lower() not in ("parar", "terminar"):
+                s = await asyncio.to_thread(horas.abierta)
+                if s and s["clave"] == horas.clave_de(valor):
+                    await asyncio.to_thread(horas.parar, self.ahora())
+                    await self.enviar_horas()
+                    hecho.append(f"dejo de contar horas para {s['cliente']}")
+        frase = f"Rutina {rutina['nombre']} desactivada"
+        frase += f": {', '.join(hecho)}." if hecho else "."
+        print(f"[rutina] quitada {rutina['nombre']}: {hecho or 'nada que deshacer'}")
+        await self.decir_turno(frase, "rutina", pregunta)
 
     async def _correr_rutina(self, rutina, pregunta):
         """Los pasos en orden. Si uno falla, los demás siguen y se dice

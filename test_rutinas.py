@@ -100,6 +100,30 @@ for frase, esperada in [
     comprueba(f"{frase!r:<44} -> {obtenida}", obtenida == esperada, f"esperaba {esperada}")
 
 print("\n" + "=" * 72)
+print("QUÉ FRASE LAS QUITA")
+print("=" * 72)
+for frase, esperada in [
+    ("Quita el modo trabajo", "modo trabajo"),
+    ("Vale, quitar modo trabajo", "modo trabajo"),       # la frase real que falló
+    ("Desactiva el modo trabajo", "modo trabajo"),
+    ("Sal del modo trabajo", "modo trabajo"),
+    ("Salir del modo trabajo", "modo trabajo"),
+    ("Fin del modo trabajo", "modo trabajo"),
+    ("Se acabó el modo trabajo", "modo trabajo"),
+    ("Quita la hora de comer", "la hora de comer"),
+    ("Para el foco", "foco"),
+    # no son quitar una rutina
+    ("Modo trabajo", None),                             # esto la LANZA
+    ("Quita el dentista", None),                        # una tarea
+    ("Quita lo del 1 de septiembre", None),
+    ("¿Qué es el modo trabajo?", None),
+    ("Para el cronómetro", None),
+]:
+    r = rutinas.buscar_quitar(frase, cargadas)
+    obtenida = r["nombre"] if r else None
+    comprueba(f"{frase!r:<34} -> {obtenida}", obtenida == esperada, f"esperaba {esperada}")
+
+print("\n" + "=" * 72)
 print("CÓMO SE ENSEÑA CADA PASO EN EL PANEL")
 print("=" * 72)
 for (tipo, valor), esperado in [
