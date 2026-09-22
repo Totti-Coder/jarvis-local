@@ -37,6 +37,7 @@ import cronometro
 import guardia
 import horas
 import memoria
+import ordenes
 import rutinas
 import temporizador
 import sistema
@@ -620,37 +621,18 @@ class Conversacion:
             await self._resolver_pendiente(pregunta)
             return
 
-        # Varias órdenes en una frase: "empieza el cronómetro y avísame a los
-        # 25 minutos". Solo si TODAS se entienden; si una no, la frase sigue
-        # su camino entera, que es mejor que hacer la mitad
-        if await self._ordenes_encadenadas(pregunta):
-            return
-
-        # El temporizador tampoco: "avísame en 10 minutos" es una frase fija
-        pedido_t = temporizador.orden(pregunta, self.temporizador is not None)
-        if pedido_t:
-            await self._usar_temporizador(*pedido_t, pregunta)
-            return
-
-        # El cronómetro no pasa por el modelo: "para" tiene que parar ya
-        accion = cronometro.orden(pregunta, self.crono.visible)
-        if accion:
-            await self._usar_cronometro(accion, pregunta)
-            return
-        # Las horas y las rutinas, igual: frases fijas, sin el modelo
+        # Cronómetro, temporizador, horas y rutinas: frases fijas, sin el
+        # modelo. Qué orden es lo decide ordenes.detectar (la misma función
+        # que mide eval_ordenes.py); aquí solo se ejecuta
         abierta = await asyncio.to_thread(horas.abierta)
         conocidos = await asyncio.to_thread(horas.clientes)
-        pedido = horas.orden(pregunta, abierta is not None, conocidos)
-        if pedido:
-            await self._usar_horas(*pedido, pregunta, conocidos)
-            return
-        quitar = await asyncio.to_thread(rutinas.buscar_quitar, pregunta)
-        if quitar:
-            await self._quitar_rutina(quitar, pregunta)
-            return
-        rutina = await asyncio.to_thread(rutinas.buscar, pregunta)
-        if rutina:
-            await self._correr_rutina(rutina, pregunta)
+        estado = ordenes.Estado(crono_visible=self.crono.visible,
+                                temporizador_activo=self.temporizador is not None,
+                                sesion_abierta=abierta is not None,
+                                clientes=conocidos)
+        orden = await asyncio.to_thread(ordenes.detectar, pregunta, estado)
+        if orden:
+            await self._ejecutar_orden(*orden, pregunta, conocidos)
             return
 
         nombre, args = await self._enrutar(pregunta)
@@ -701,29 +683,27 @@ class Conversacion:
 
         await self._conversar(pregunta, material)
 
-    async def _ordenes_encadenadas(self, pregunta):
-        """True si la frase eran varias órdenes y se han hecho todas."""
-        partes = cronometro.trozos(pregunta)
-        if len(partes) < 2:
-            return False
-        plan = []
-        visible = self.crono.visible
-        for parte in partes:
-            t = temporizador.orden(parte, self.temporizador is not None)
-            c = None if t else cronometro.orden(parte, visible)
-            if not (t or c):
-                return False
-            plan.append(("t", t) if t else ("c", c))
-            visible = visible or c in ("abrir", "empezar", "reanudar", "reiniciar")
-        frases = []
-        for tipo, orden_ in plan:
-            if tipo == "c":
-                frases.append(await self._hacer_cronometro(orden_))
-            else:
-                frases.append(await self._hacer_temporizador(*orden_))
-        print(f"[ordenes] {len(plan)} en una frase: {plan}")
-        await self.decir_turno(" ".join(frases), "cronómetro", pregunta)
-        return True
+    async def _ejecutar_orden(self, tipo, dato, pregunta, conocidos):
+        """Hace la orden que ordenes.detectar ha reconocido."""
+        if tipo == "encadenadas":
+            frases = []
+            for sub, orden_ in dato:
+                if sub == "cronometro":
+                    frases.append(await self._hacer_cronometro(orden_))
+                else:
+                    frases.append(await self._hacer_temporizador(*orden_))
+            print(f"[ordenes] {len(dato)} en una frase: {dato}")
+            await self.decir_turno(" ".join(frases), "cronómetro", pregunta)
+        elif tipo == "temporizador":
+            await self._usar_temporizador(*dato, pregunta)
+        elif tipo == "cronometro":
+            await self._usar_cronometro(dato, pregunta)
+        elif tipo == "horas":
+            await self._usar_horas(*dato, pregunta, conocidos)
+        elif tipo == "quitar_rutina":
+            await self._quitar_rutina(dato, pregunta)
+        elif tipo == "rutina":
+            await self._correr_rutina(dato, pregunta)
 
     async def _hacer_cronometro(self, accion):
         """Hace la orden y devuelve la frase, SIN decirla: así una frase con

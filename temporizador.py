@@ -22,7 +22,9 @@ from horas import _normal, duracion_en
 
 POMODORO_MIN = 25
 
-_NOMBRE = r"(?:temporizador|pomodoro|cuenta atras)"
+# "Alarma" también: es como la mayoría llama a una cuenta atrás
+# "Cuenta atrás" lo escribe Whisper también junto: "cuéntagatrás" (eval --voz)
+_NOMBRE = r"(?:temporizador|pomodoro|cuenta ?(?:ga ?)?atras|alarma)"
 _CANCELAR = re.compile(r"\b(?:cancela|cancelalo|quita|quitalo|para|paralo|deten|"
                        r"detenlo|borra|apaga|anula)\b(?: (?:el|la|mi))? " + _NOMBRE)
 # "Avísame en 10 minutos", "¿me puedes avisar a los cinco minutos?",
@@ -31,14 +33,17 @@ _CANCELAR = re.compile(r"\b(?:cancela|cancelalo|quita|quitalo|para|paralo|deten|
 _SOLO_AVISAME = re.compile(
     r"^(?:jarvis |vale |oye |venga |pues )*"
     r"(?:(?:me )?(?:puedes|podrias) )?"
-    r"(?:avisame|avisarme|avisar|me avisas|me avisaras|dime algo|llamame|me llamas)"
+    r"(?:avisame|avisarme|avisar|me avisas|me avisaras|dime algo|llamame|me llamas|"
+    # "recuérdame EN 10 minutos", sin decir qué: el verbo va pegado al tiempo.
+    # Con contenido ("recuérdame sacar la pizza en...") no encaja: es tarea
+    r"despier[dt]ame|recuerdame|me recuerdas)"
     # "avísame LOS 25 minutos": Whisper se come la "a" a menudo
     r"(?: tu)? (?:en|dentro de|a los?|los|cuando pasen|pasados?|despues de) "
     r"(?P<dur>.+?)(?: por favor)?$")
 # Y al revés: "en 25 minutos avísame"
 _AVISAME_AL_FINAL = re.compile(
     r"^(?:jarvis |vale |oye |venga )*(?:en|dentro de) (?P<dur>.+?) "
-    r"(?:avisame|me avisas|dime algo|llamame)(?: por favor)?$")
+    r"(?:avisame|me avisas|dime algo|llamame|despiertame|recuerdamelo)(?: por favor)?$")
 _QUEDA = re.compile(r"\b(?:cuanto (?:le )?(?:queda|falta)|cuanto tiempo (?:queda|falta)|"
                     r"como va el " + _NOMBRE + r")\b")
 
@@ -63,9 +68,13 @@ def orden(texto, activo=False):
             return ("poner", segundos)
         # Sin duración hace falta pedirlo de verdad: "¿qué es un pomodoro?"
         # habla DEL pomodoro, no pide uno
-        pide = re.search(r"\b(?:pon|ponme|pone|poner|inicia|empieza|arranca|activa|"
+        # "ponle": Whisper confunde la n y la l ("ponme" -> "ponle", eval --voz)
+        pide = re.search(r"\b(?:pon|ponme|ponle|pone|poner|inicia|empieza|arranca|activa|"
                          r"quiero|hazme|otro|vamos con|empezamos)\b", t)
         suelto = re.fullmatch(r"(?:jarvis |vale |venga )*(?:un |el )?" + _NOMBRE, t)
+        # "Pon una alarma A LAS siete" es una hora del reloj: va a la agenda
+        if re.search(r"\ba (?:las?|la una)\b", t):
+            return None
         if not (pide or suelto):
             return None
         if "pomodoro" in t:

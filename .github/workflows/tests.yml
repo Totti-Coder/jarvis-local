@@ -73,3 +73,6 @@ jobs:
 
       - name: Temporizador — qué frase lo pone y cuál no
         run: python test_temporizador.py
+
+      - name: Órdenes fijas — 72 frases, cronómetro · temporizador · horas · rutinas
+        run: python eval_ordenes.py

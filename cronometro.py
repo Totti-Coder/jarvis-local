@@ -39,12 +39,17 @@ VERBOS = {
                   "pon", "ponme", "poner", "ponlo", "activa", "activalo",
                   "enciende", "enciendelo", "encender", "dale", "start",
                   # en primera persona: "lo empiezo al cronómetro"
-                  "empiezo", "enciendo", "arranco", "inicio", "pongo"},
+                  "empiezo", "enciendo", "arranco", "inicio", "pongo",
+                  # de usted, como mucha gente habla a un asistente
+                  # (eval --voz: "inicia" salía "inicie")
+                  "inicie", "empiece", "arranque", "ponga", "active"},
     "pausar":    {"pausa", "pausalo", "pausar", "para", "paralo", "parar",
-                  "deten", "detenlo", "detener", "stop", "congela"},
+                  "deten", "detenlo", "detener", "stop", "congela",
+                  "pare", "detenga", "pause"},
     "reanudar":  {"reanuda", "reanudalo", "reanudar", "continua", "continuar",
-                  "sigue", "seguir"},
-    "reiniciar": {"reinicia", "reinicialo", "reiniciar", "resetea", "reset"},
+                  "sigue", "seguir", "continue", "siga", "reanude"},
+    "reiniciar": {"reinicia", "reinicialo", "reiniciar", "resetea", "reset",
+                  "reinicie"},
     "cerrar":    {"cierra", "cierralo", "cerrar", "quita", "quitalo",
                   "oculta", "apaga", "apagalo"},
     "consultar": {"cuanto", "lleva", "llevo", "llevamos", "marca"},
@@ -109,6 +114,8 @@ _OIDO_MAL = [
     (re.compile(r"\ben pieza\b"), "empieza"),
     (re.compile(r"\bre inicia\b"), "reinicia"),
     (re.compile(r"\bpa usa\b"), "pausa"),
+    # Estos los encontró eval_ordenes.py --voz (Piper lo dice, Whisper lo oye)
+    (re.compile(r"\bponen marcha\b"), "pon en marcha"),
 ]
 
 # Palabras que convierten la frase en una pregunta o un comentario SOBRE el
@@ -120,6 +127,13 @@ _HABLA_DE = {"que", "cual", "como", "por", "para", "tenia", "tengo", "tiene",
 # lo pausaba, porque "para" es también el verbo de pararlo
 _PREGUNTA_SOBRE = re.compile(r"\b(?:que es|para que|como funciona|cual es|sirve|"
                              r"tenia|regal|compr)")
+
+
+def _es_crono(palabra):
+    """"cronómetro", "cronometrar" y también "crono", como se dice hablando."""
+    # "conómetro": Whisper se come a veces la r (eval --voz)
+    return (palabra.startswith(("cronometr", "conometr"))
+            or palabra in ("crono", "cronos"))
 
 
 def sin_tildes(texto):
@@ -139,7 +153,8 @@ def es_orden_sin_contenido(texto):
     """"empiezo al cronómetro" -> True: no hay nada que apuntar.
     "comprar un cronómetro nuevo" -> False: eso sí es una tarea."""
     palabras = _normal(texto)
-    menciona = any(p.startswith(("cronometr", "temporizador", "pomodoro")) for p in palabras)
+    menciona = any(_es_crono(p) or p.startswith(("temporizador", "pomodoro"))
+                   for p in palabras)
     return menciona and all(p in _SIN_CONTENIDO or p.isdigit() for p in palabras)
 
 
@@ -156,7 +171,7 @@ def orden(texto, visible=False):
         frase = patron.sub(bueno, frase)
     palabras = frase.split()
 
-    if any(p.startswith("cronometr") for p in palabras):
+    if any(_es_crono(p) for p in palabras):
         pregunta = _pregunta_tiempo(palabras)
         if pregunta:
             return pregunta

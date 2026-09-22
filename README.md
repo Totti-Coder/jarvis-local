@@ -409,6 +409,8 @@ que el runner no puede probar sería peor que no tener CI.
 
 ```bash
 python eval_router.py     # 97 frases · acierto por categoría · % global
+python eval_ordenes.py    # 72 órdenes fijas (cronómetro, temporizador, horas, rutinas)
+python eval_ordenes.py --voz   # las mismas, DICHAS por Piper y oídas por Whisper
 python test_memoria.py    # fechas y horas habladas          (37)
 python test_ventanas.py   # franjas, tramos, fines de semana (32)
 python test_horas.py      # ambigüedad de "a las 8.40"       (20)
@@ -440,6 +442,14 @@ los fonemas que genera Piper— que los números se pronuncian como palabras
 **Ninguno hace ruido.** Los tests que hablan sustituyen los altavoces por uno
 mudo que consume el audio en tiempo real: las medidas siguen valiendo y no se
 oye nada. Con `--sonido` suenan de verdad.
+
+**Las órdenes se prueban también con voz.** `eval_ordenes.py --voz` hace que
+Piper diga cada frase y Whisper la transcriba, y evalúa lo que Whisper
+escribe. Así salieron *"en 100 el cronómetro"* (por *"enciende"*), *"ponen
+marcha"* o *"inicie"* antes de que le pasaran a nadie: **72/72 en texto, 94 %
+con voz**. Los fallos que quedan son órdenes de una palabra que la voz
+sintética pronuncia peor que una persona (*"Para"* → *"¡Dana!"*), y no se
+fuerzan: sería ajustar el sistema a los defectos de Piper, no a tu voz.
 
 **Cada bug encontrado se convierte en un caso permanente.** El set del router
 creció de 42 a 93 frases así: cada vez que enrutaba mal algo real, esa frase
@@ -498,6 +508,7 @@ sistema.py      Control del PC: lista blanca, Steam, atajos
 correo.py       Gmail: leer, resumir, redactar, enviar
 certificado.py  HTTPS autofirmado, para el micrófono del móvil
 lanzador.pyw    Doble clic: arranca sin consola y abre la ventana
+ordenes.py      Qué orden fija es una frase, antes del modelo
 cronometro.py   Cronómetro: órdenes de voz sin pasar por el modelo
 horas.py        Horas por cliente: sesiones en SQLite y CSV
 rutinas.py      Una frase, varios pasos de una lista cerrada

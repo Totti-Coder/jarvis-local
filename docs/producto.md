@@ -83,6 +83,7 @@ Esta lista pesa tanto como la de funcionalidades.
 | Qué | Hoy |
 |---|---|
 | Acierto del router (elegir la acción correcta) | **97/97** frases reales |
+| Órdenes fijas entendidas (cronómetro, temporizador, horas, rutinas) | **72/72** en texto · **94 %** dichas por voz sintética |
 | Tests | **718 casos**, 574 en el CI |
 | Latencia de voz a respuesta | **~0,8 s** |
 | APIs de pago | **0** |
