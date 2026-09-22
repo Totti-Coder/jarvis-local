@@ -76,3 +76,6 @@ jobs:
 
       - name: Órdenes fijas — 72 frases, cronómetro · temporizador · horas · rutinas
         run: python eval_ordenes.py
+
+      - name: El tiempo — Open-Meteo, sin red en el test
+        run: python test_tiempo.py

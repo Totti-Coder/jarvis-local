@@ -84,7 +84,13 @@ CASOS = [
 
     # ---- buscar en internet: solo lo que cambia ----
     ("¿Cómo va el Barcelona en la Liga ahora mismo?", "buscar_en_web", "buscar"),
-    ("¿Qué tiempo hace en Madrid?",                   "buscar_en_web", "buscar"),
+    # el tiempo tiene herramienta propia: datos exactos, sin leer páginas
+    ("¿Qué tiempo hace en Madrid?",                   "el_tiempo", "tiempo"),
+    ("¿Va a llover mañana?",                          "el_tiempo", "tiempo"),
+    ("¿Hace frío en Bilbao?",                         "el_tiempo", "tiempo"),
+    ("¿Qué temperatura hay?",                         "el_tiempo", "tiempo"),
+    ("¿Qué tiempo hará el jueves en Vigo?",           "el_tiempo", "tiempo"),
+    ("Dame la previsión del fin de semana",           "el_tiempo", "tiempo"),
     ("¿Cuánto cuesta el bitcoin?",                    "buscar_en_web", "buscar"),
     ("¿Qué ha pasado hoy en las noticias?",           "buscar_en_web", "buscar"),
     ("¿Quién ganó la Liga en 2026?",                  "buscar_en_web", "buscar"),
@@ -197,7 +203,7 @@ print("\n" + "-" * 74)
 print("POR CATEGORÍA")
 print("-" * 74)
 for cat in ("apuntar", "consultar", "completar", "reloj", "recordar",
-            "buscar", "sistema", "correo", "charla"):
+            "buscar", "tiempo", "sistema", "correo", "charla"):
     if not total_categoria[cat]:
         continue
     n, t = por_categoria[cat], total_categoria[cat]

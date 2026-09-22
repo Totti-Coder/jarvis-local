@@ -21,6 +21,7 @@ import ollama
 
 import correo
 import memoria
+import tiempo
 import sistema
 from ajustes import MODELO_LLM, NOMBRE, NUM_CTX, PROMPT_SISTEMA
 
@@ -77,9 +78,21 @@ HERRAMIENTAS = [
                                       "mencionó ningún momento ('¿qué tengo pendiente?')."}},
             "required": []}}},
     {"type": "function", "function": {
+        "name": "el_tiempo",
+        "description": "El tiempo que hace o va a hacer en un sitio: temperatura, "
+                       "lluvia, si hará frío o calor. Úsala SIEMPRE para el tiempo, "
+                       "en vez de buscar en internet.",
+        "parameters": {"type": "object", "properties": {
+            "lugar": {"type": "string",
+                      "description": "Ciudad o pueblo. Vacío si no lo dice: se usa "
+                                     "donde vive"},
+            "cuando": {"type": "string",
+                       "description": "'hoy', 'mañana', 'el jueves'... Vacío para ahora"}},
+            "required": []}}},
+    {"type": "function", "function": {
         "name": "buscar_en_web",
         "description": "Busca en internet información ACTUAL que no puedes saber: "
-                       "noticias, resultados deportivos, clasificaciones, el tiempo, "
+                       "noticias, resultados deportivos, clasificaciones, "
                        "precios, cotizaciones, qué ha pasado hoy, o cualquier cosa "
                        "posterior a tu entrenamiento. NO la uses para cultura general, "
                        "historia, definiciones ni cosas que ya sabes.",
@@ -87,7 +100,7 @@ HERRAMIENTAS = [
             "consulta": {"type": "string",
                          "description": "Qué buscar, en pocas palabras y como se "
                                         "escribiría en un buscador: 'clasificación "
-                                        "Liga española', 'tiempo Madrid mañana'"}},
+                                        "Liga española', 'precio del bitcoin'"}},
             "required": ["consulta"]}}},
     {"type": "function", "function": {
         "name": "abrir_programa",
@@ -246,6 +259,10 @@ Usa control_sistema para el ordenador en sí:
 OJO con apagar y reiniciar: solo si lo PIDE. "El ordenador va lento" o
 "¿se apaga solo?" NO son órdenes de apagado.
 
+Usa el_tiempo para el tiempo, no busques en internet:
+"¿qué tiempo hace?", "¿va a llover mañana?", "¿qué temperatura hay en Bilbao?",
+"¿hace frío en Madrid?". Si no dice el sitio, deja lugar vacío.
+
 Usa recordar_dato cuando cuente algo sobre sí mismo o sobre su gente, que no
 hay que hacer: "me llamo X", "soy X", "vivo en X", "mi novia se llama X",
 "mi hermana es X", "soy alérgico a X", "me gusta X", "trabajo en X".
@@ -287,7 +304,17 @@ FUNCIONES = {
     "cerrar_programa": lambda programa="", **k: sistema.cerrar_programa(programa),
     "control_sistema": lambda accion="", **k: sistema.ejecutar_accion(accion),
     "ejecutar_atajo": lambda nombre="", **k: sistema.ejecutar_atajo(nombre),
+    "el_tiempo": lambda lugar="", cuando="", **k: _el_tiempo(lugar, cuando),
 }
+
+
+def _el_tiempo(lugar, cuando):
+    """Sin lugar, el de casa; y si tampoco se sabe, se pregunta."""
+    sitio = (lugar or "").strip() or tiempo.donde_vive()
+    if not sitio:
+        return ("¿De qué ciudad? Si me dices dónde vives, lo recuerdo "
+                "para la próxima.")
+    return tiempo.el_tiempo(sitio, cuando)
 
 
 def prompt_con_fecha():
@@ -785,6 +812,32 @@ def enrutar(pregunta):
         if ("apagar" in accion or "reiniciar" in accion) and not pide_apagar(pregunta):
             print(f"[router] descarto {accion!r}: {pregunta!r} no lo pide claramente")
             return None, None
+
+    # El tiempo tiene su propia herramienta: datos exactos y en un segundo,
+    # en vez de leer páginas y resumirlas. Si el modelo tira de búsqueda
+    # igualmente, se corrige aquí
+    # Y al revés: con la herramienta del tiempo delante, el modelo la usaba
+    # para cualquier frase con "hoy" ("¿qué día es hoy?", "hoy hace buen
+    # día"). Solo vale si la frase pregunta de verdad por el tiempo.
+    if nombre == "el_tiempo" and not tiempo.es_del_tiempo(pregunta):
+        if re.search(r"\b(que dia|que hora|en que fecha|que fecha)\b",
+                     _sin_tildes(pregunta)):
+            print(f"[router] el_tiempo -> que_hora_es: {pregunta!r} pregunta por el día")
+            return "que_hora_es", {}
+        print(f"[router] descarto el_tiempo: {pregunta!r} no pregunta por el tiempo")
+        return None, None
+
+    # "¿Qué has hecho hoy?" pregunta al asistente, no a la agenda
+    if nombre == "listar_tareas" and re.search(
+            r"\b(que has hecho|que tal (?:has|ha|te|el)|como (?:ha ido|estas))\b",
+            _sin_tildes(pregunta)):
+        print(f"[router] descarto listar_tareas: {pregunta!r} es charla")
+        return None, None
+
+    if nombre == "buscar_en_web" and tiempo.es_del_tiempo(pregunta):
+        print(f"[router] buscar_en_web -> el_tiempo: {pregunta!r} pregunta por el tiempo")
+        return "el_tiempo", {"lugar": tiempo.lugar_en(pregunta),
+                             "cuando": momento_en(pregunta)}
 
     if nombre == "buscar_en_web" and not merece_busqueda(pregunta):
         print(f"[router] descarto buscar_en_web: {pregunta!r} no pide nada actual")

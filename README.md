@@ -15,7 +15,7 @@
   <img alt="Latencia" src="https://img.shields.io/badge/voz→respuesta-~0.8s-2ea44f?style=for-the-badge">
   <img alt="APIs de pago" src="https://img.shields.io/badge/API_keys-0-2ea44f?style=for-the-badge">
   <img alt="Offline" src="https://img.shields.io/badge/offline--first-100%25-2ea44f?style=for-the-badge">
-  <img alt="Router" src="https://img.shields.io/badge/router_eval-103%2F103-2ea44f?style=for-the-badge">
+  <img alt="Router" src="https://img.shields.io/badge/router_eval-108%2F108-2ea44f?style=for-the-badge">
 </p>
 
 <p align="center">
@@ -25,8 +25,8 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-718_casos-2ea44f">
-  <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-12_funciones-0ea5e9">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-749_casos-2ea44f">
+  <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
 ---
@@ -99,7 +99,7 @@ medición, no de una intuición.
   **rompe la conversación**: contestaba *"no tengo una función específica para
   contar chistes"*. Tres intentos de arreglarlo por prompt fracasaron. Se
   resolvió por arquitectura: **dos llamadas al LLM con personalidades
-  distintas**, y el conversador no ve una herramienta jamás. Resultado: **103/103
+  distintas**, y el conversador no ve una herramienta jamás. Resultado: **108/108
   frases enrutadas** y conversación intacta.
 
 - **🛡️ Deterministic Guardrails — *el modelo propone, el código dispone*** —
@@ -206,7 +206,8 @@ mover Whisper a CPU.
 </tr>
 </table>
 
-**Y además:** ⏳ **temporizador** (*"ponme un pomodoro"*, *"avísame en 10
+**Y además:** 🌦️ **el tiempo** (*"¿va a llover mañana?"*, *"¿hace frío en
+Bilbao?"*) con datos de Open-Meteo, **sin clave de API ni registro** · ⏳ **temporizador** (*"ponme un pomodoro"*, *"avísame en 10
 minutos"*, *"¿cuánto queda?"*): el aro exterior del núcleo se convierte en un
 reloj que se va apagando, y avisa al acabar, pero nunca a media frase tuya · 💼 **horas por cliente** (*"empiezo con Acme"*, *"¿cuántas horas
 llevo este mes?"*, exporta a CSV; entiende que *"Akme"* es Acme, se ve en la
@@ -223,7 +224,7 @@ hablar (VAD) · ✋ interrumpible a media frase · ⚡ streaming por frases.
 
 | Agenda | Correo | Ordenador | Otras |
 |:---|:---|:---|:---|
-| `anadir_tarea` | `enviar_correo` | `abrir_programa` | `que_hora_es` |
+| `anadir_tarea` | `enviar_correo` | `abrir_programa` | `que_hora_es` · `el_tiempo` |
 | `listar_tareas` | `leer_correos` | `cerrar_programa` | `buscar_en_web` |
 | `completar_tarea` | | `control_sistema` | `recordar_dato` |
 | | | `ejecutar_atajo` | |
@@ -394,12 +395,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**718 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**749 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
-suite del router con 103 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
+suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 574 de los 718 casos**, sin instalar una sola dependencia:
+**En CI corren 605 de los 749 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -408,7 +409,7 @@ y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
 que el runner no puede probar sería peor que no tener CI.
 
 ```bash
-python eval_router.py     # 103 frases · acierto por categoría · % global  (--voz: dichas y oídas)
+python eval_router.py     # 108 frases · acierto por categoría · % global  (--voz: dichas y oídas)
 python eval_ordenes.py    # 72 órdenes fijas (cronómetro, temporizador, horas, rutinas)
 python eval_ordenes.py --voz   # las mismas, DICHAS por Piper y oídas por Whisper
 python test_memoria.py    # fechas y horas habladas          (37)
@@ -452,7 +453,7 @@ sintética pronuncia peor que una persona (*"Para"* → *"¡Dana!"*), y no se
 fuerzan: sería ajustar el sistema a los defectos de Piper, no a tu voz.
 
 **Cada bug encontrado se convierte en un caso permanente.** El set del router
-creció de 42 a 103 frases así: cada vez que enrutaba mal algo real, esa frase
+creció de 42 a 108 frases así: cada vez que enrutaba mal algo real, esa frase
 entró en la evaluación.
 
 </details>
@@ -509,6 +510,7 @@ correo.py       Gmail: leer, resumir, redactar, enviar
 certificado.py  HTTPS autofirmado, para el micrófono del móvil
 lanzador.pyw    Doble clic: arranca sin consola y abre la ventana
 ordenes.py      Qué orden fija es una frase, antes del modelo
+tiempo.py       El tiempo por Open-Meteo, sin clave de API
 cronometro.py   Cronómetro: órdenes de voz sin pasar por el modelo
 horas.py        Horas por cliente: sesiones en SQLite y CSV
 rutinas.py      Una frase, varios pasos de una lista cerrada
@@ -541,7 +543,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── atajos.EJEMPLO.json
 │
 │   # TESTS
-├── eval_router.py          # Acierto del router            (103 frases)
+├── eval_router.py          # Acierto del router            (108 frases)
 ├── test_memoria.py         # Fechas y horas habladas        (37 casos)
 ├── test_ventanas.py        # Franjas, tramos y findes       (32 casos)
 ├── test_horas.py           # Ambigüedad de "a las 8.40"     (20 casos)
@@ -555,6 +557,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_horas_cliente.py   # Fichar, corregir, olvidos, CSV (161 casos)
 ├── test_rutinas.py         # Pasos, quitar, procesos       (55 casos)
 ├── test_temporizador.py    # Qué frase lo pone y cuál no    (47 casos)
+├── test_tiempo.py          # El tiempo, sin tocar la red     (31 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)
@@ -598,6 +601,7 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
 | ✅ Horas por cliente + exportar a CSV | |
 | ✅ Rutinas por voz (lista cerrada de pasos) | |
 | ✅ Temporizador y pomodoros | |
+| ✅ El tiempo sin clave de API (Open-Meteo) | |
 | ✅ Blindaje del WebSocket ([seguridad](docs/seguridad.md)) | ⬜ Cifrar `token.json` con DPAPI |
 
 ---
