@@ -194,6 +194,15 @@ ESCENARIOS = [
     # Quitar una rutina: antes caía en el router como "completar tarea"
     ("rutina_quitar",       "Vale, quitar modo trabajo",    ("completar_tarea", {"texto": "modo trabajo"}), None),
     ("rutina_quitar_nada",  "Quita el modo trabajo",        (None, None), None),
+    # Las tres frases reales que acababan como TAREAS llamadas "cronómetro"
+    ("crono_oido_mal",      "Jarvis en 100 el cronómetro",  ("anadir_tarea", {"texto": "cronometro"}), None),
+    ("dos_ordenes",         "Lo empiezo al cronómetro y avísame los 25 minutos.", ("anadir_tarea", {"texto": "empiezo al cronometro"}), None),
+    ("aviso_del_crono",     "Avísame a los 25 minutos que hayan pasado el cronómetro.", ("anadir_tarea", {"texto": "avisar"}), None),
+    # Y si aun así el modelo quiere apuntar una orden como tarea, no se apunta
+    # (una frase que el cronómetro NO entiende: llega al modelo, y la red la frena)
+    ("tarea_sin_contenido", "Oye, el cronómetro ese que tenía antes", ("anadir_tarea", {"texto": "cronometro"}), None),
+    # ...pero una tarea de verdad que menciona un cronómetro, sí
+    ("tarea_con_crono",     "Tengo que comprar un cronómetro nuevo", ("anadir_tarea", {"texto": "comprar un cronometro nuevo"}), None),
 ]
 
 # El reloj de los escenarios. Sin fijarlo, "el 1 de septiembre" seria de
@@ -255,6 +264,10 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre == "aviso_del_crono":
+        # El cronómetro lleva 22 segundos, como en la captura del usuario
+        conv.crono = servidor.cronometro.Cronometro(reloj=lambda: 100.0)
+        conv.crono.visible, conv.crono.desde = True, 78.0
     if nombre == "rutina_quitar":
         # Con el cronómetro de la rutina todavía en marcha
         conv.crono = servidor.cronometro.Cronometro(reloj=lambda: 100.0)

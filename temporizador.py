@@ -32,7 +32,8 @@ _SOLO_AVISAME = re.compile(
     r"^(?:jarvis |vale |oye |venga |pues )*"
     r"(?:(?:me )?(?:puedes|podrias) )?"
     r"(?:avisame|avisarme|avisar|me avisas|me avisaras|dime algo|llamame|me llamas)"
-    r"(?: tu)? (?:en|dentro de|a los?|cuando pasen|pasados?|despues de) "
+    # "avísame LOS 25 minutos": Whisper se come la "a" a menudo
+    r"(?: tu)? (?:en|dentro de|a los?|los|cuando pasen|pasados?|despues de) "
     r"(?P<dur>.+?)(?: por favor)?$")
 # Y al revés: "en 25 minutos avísame"
 _AVISAME_AL_FINAL = re.compile(
@@ -75,10 +76,13 @@ def orden(texto, activo=False):
     if m:
         segundos = duracion_en(m.group("dur"))
         # "en 10 minutos DE sacar la pizza" lleva contenido: es una tarea.
-        # Pero el "de" de "un cuarto de hora" es parte del tiempo
+        # Pero el "de" de "un cuarto de hora" es parte del tiempo, y "a los
+        # 25 minutos QUE hayan pasado del cronómetro" habla del cronómetro
+        del_crono = "cronometr" in m.group("dur")
         contenido = re.search(r"\b(?:minutos?|horas?)\s+(?:de|que|para)\b", m.group("dur"))
-        if segundos and not contenido:
-            return ("poner", segundos)
+        if segundos and (del_crono or not contenido):
+            # "A los 25 minutos del cronómetro" cuenta desde lo que YA lleva
+            return ("poner_crono" if del_crono else "poner", segundos)
 
     if activo and _QUEDA.search(t):
         return ("consultar", None)

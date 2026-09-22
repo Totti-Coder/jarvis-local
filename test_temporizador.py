@@ -42,6 +42,10 @@ for frase, activo, esperado in [
     ("¿Puedes avisarme dentro de media hora?", False, ("poner", 1800)),
     ("Avísame cuando pasen 20 minutos",        False, ("poner", 1200)),
     ("En 25 minutos avísame",                  False, ("poner", 1500)),
+    ("Avísame los 25 minutos",                 False, ("poner", 1500)),   # sin la "a"
+    # "a los 25 minutos DEL cronómetro": cuenta desde lo que ya lleva
+    ("Avísame a los 25 minutos que hayan pasado el cronómetro", False, ("poner_crono", 1500)),
+    ("Avísame a los 25 minutos del cronómetro", False, ("poner_crono", 1500)),
     ("Pon un temporizador",                    False, ("sin_duracion", None)),
     ("¿Cuánto queda?",                         True,  ("consultar", None)),
     ("¿Cuánto le queda al temporizador?",      False, ("consultar", None)),

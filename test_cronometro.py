@@ -92,6 +92,47 @@ for frase in ["Para", "Sigue", "Dale", "Reinicia"]:
     comprueba(f"{frase!r:<42} -> nada", r is None, str(r))
 
 
+print("\n  lo que Whisper escribe mal, y aun así es una orden:")
+for frase, esperada in [
+    ("Jarvis en 100 el cronómetro", "empezar"),      # "enciende" -> "en-cien-de"
+    ("En cien de el cronómetro", "empezar"),
+    ("Encienda el cronómetro", "empezar"),
+    ("En pieza el cronómetro", "empezar"),
+    ("Lo empiezo al cronómetro", "empezar"),          # en primera persona
+    ("Jarvis, cronómetro ya", "abrir"),               # corta y sin verbo: abrirlo
+]:
+    r = orden(frase)
+    comprueba(f"{frase!r:<42} -> {r}", r == esperada, f"esperaba {esperada}")
+
+print("\n  hablar DEL cronómetro, aunque lleve un verbo, no es una orden:")
+for frase in ["¿Para qué sirve un cronómetro?", "¿Cómo funciona el cronómetro?",
+              "Me regalaron un cronómetro", "¿Cuál es el mejor cronómetro?"]:
+    r = orden(frase)
+    comprueba(f"{frase!r:<42} -> nada", r is None, str(r))
+
+print("\n  varias órdenes en una frase:")
+from cronometro import es_orden_sin_contenido, trozos  # noqa: E402
+for frase, esperado in [
+    ("Lo empiezo al cronómetro y avísame los 25 minutos.",
+     ["Lo empiezo al cronómetro", "avísame los 25 minutos."]),
+    ("Para el cronómetro, y luego dime cuánto lleva",
+     ["Para el cronómetro", "dime cuánto lleva"]),
+    ("Empieza el cronómetro", ["Empieza el cronómetro"]),
+]:
+    r = trozos(frase)
+    comprueba(f"{frase!r:<52} -> {len(r)} trozos", r == esperado, r)
+
+print("\n  una \"tarea\" que en realidad era una orden mal entendida:")
+for texto, esperado in [
+    ("empiezo al cronómetro", True), ("cronómetro", True),
+    ("avisar a los 25 minutos que hayan pasado el cronómetro", True),
+    ("comprar un cronómetro nuevo", False),           # esta SÍ es una tarea
+    ("devolver el temporizador a Ana", False),
+    ("llamar al banco", False),
+]:
+    r = es_orden_sin_contenido(texto)
+    comprueba(f"{texto!r:<56} -> {r}", r == esperado)
+
 print("\n" + "=" * 70)
 print("CÓMO SE DICE UN TIEMPO")
 print("=" * 70)

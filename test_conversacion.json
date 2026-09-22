@@ -1395,5 +1395,153 @@
    "estado",
    "inactivo"
   ]
+ ],
+ "crono_oido_mal": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "crono",
+   true,
+   true,
+   0.0
+  ],
+  [
+   "herramienta",
+   "cronómetro"
+  ],
+  [
+   "token",
+   "En marcha."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "dos_ordenes": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "crono",
+   true,
+   true,
+   0.0
+  ],
+  [
+   "temporizador",
+   1500,
+   1500
+  ],
+  [
+   "herramienta",
+   "cronómetro"
+  ],
+  [
+   "token",
+   "En marcha. Pomodoro en marcha: veinticinco minutos. Te aviso al acabar."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "aviso_del_crono": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "temporizador",
+   1478,
+   1478.0
+  ],
+  [
+   "herramienta",
+   "temporizador"
+  ],
+  [
+   "token",
+   "Te aviso cuando el cronómetro llegue a 25 minutos: dentro de 24 minutos y 38 segundos."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "tarea_sin_contenido": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "token",
+   "No te he entendido bien. Prueba con: empieza el cronómetro, o avísame en veinticinco minutos."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "tarea_con_crono": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "anadir_tarea"
+  ],
+  [
+   "token",
+   "Hoy tienes: dentista a las 5."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
  ]
 }

@@ -620,6 +620,12 @@ class Conversacion:
             await self._resolver_pendiente(pregunta)
             return
 
+        # Varias órdenes en una frase: "empieza el cronómetro y avísame a los
+        # 25 minutos". Solo si TODAS se entienden; si una no, la frase sigue
+        # su camino entera, que es mejor que hacer la mitad
+        if await self._ordenes_encadenadas(pregunta):
+            return
+
         # El temporizador tampoco: "avísame en 10 minutos" es una frase fija
         pedido_t = temporizador.orden(pregunta, self.temporizador is not None)
         if pedido_t:
@@ -648,6 +654,18 @@ class Conversacion:
             return
 
         nombre, args = await self._enrutar(pregunta)
+
+        # Si el modelo quiere APUNTAR una tarea que habla del cronómetro o
+        # del temporizador, es una orden que no se ha entendido (Whisper
+        # oyó "en 100" por "enciende"). Apuntarla ensucia la agenda con
+        # tareas como "cronómetro": mejor pedir que se repita
+        if nombre == "anadir_tarea" and cronometro.es_orden_sin_contenido(
+                (args or {}).get("texto") or pregunta):
+            print("[router] tarea descartada: era una orden al cronómetro mal entendida")
+            await self.decir_turno(
+                "No te he entendido bien. Prueba con: empieza el cronómetro, "
+                "o avísame en veinticinco minutos.", None, pregunta)
+            return
 
         material = None
         if nombre == "buscar_en_web":
@@ -683,10 +701,41 @@ class Conversacion:
 
         await self._conversar(pregunta, material)
 
-    async def _usar_cronometro(self, accion, pregunta):
-        """Una orden de voz al cronómetro: se hace, se pinta y se cuenta."""
+    async def _ordenes_encadenadas(self, pregunta):
+        """True si la frase eran varias órdenes y se han hecho todas."""
+        partes = cronometro.trozos(pregunta)
+        if len(partes) < 2:
+            return False
+        plan = []
+        visible = self.crono.visible
+        for parte in partes:
+            t = temporizador.orden(parte, self.temporizador is not None)
+            c = None if t else cronometro.orden(parte, visible)
+            if not (t or c):
+                return False
+            plan.append(("t", t) if t else ("c", c))
+            visible = visible or c in ("abrir", "empezar", "reanudar", "reiniciar")
+        frases = []
+        for tipo, orden_ in plan:
+            if tipo == "c":
+                frases.append(await self._hacer_cronometro(orden_))
+            else:
+                frases.append(await self._hacer_temporizador(*orden_))
+        print(f"[ordenes] {len(plan)} en una frase: {plan}")
+        await self.decir_turno(" ".join(frases), "cronómetro", pregunta)
+        return True
+
+    async def _hacer_cronometro(self, accion):
+        """Hace la orden y devuelve la frase, SIN decirla: así una frase con
+        dos órdenes ("empieza el cronómetro y avísame en 25 minutos") se
+        contesta de una vez."""
         frase = self.crono.aplicar(accion)
         await self.enviar(tipo="crono", **self.crono.estado())
+        return frase
+
+    async def _usar_cronometro(self, accion, pregunta):
+        """Una orden de voz al cronómetro: se hace, se pinta y se cuenta."""
+        frase = await self._hacer_cronometro(accion)
         await self.decir_turno(frase, "cronómetro", pregunta)
 
     async def enviar_horas(self, forzar=False):
@@ -902,6 +951,24 @@ class Conversacion:
         await self.decir_suelto(frase, "temporizador")
 
     async def _usar_temporizador(self, accion, segundos, pregunta):
+        frase = await self._hacer_temporizador(accion, segundos)
+        await self.decir_turno(frase, "temporizador", pregunta)
+
+    async def _hacer_temporizador(self, accion, segundos):
+        if accion == "poner_crono":
+            # "Avísame a los 25 minutos del cronómetro": cuenta desde lo que
+            # el cronómetro YA lleva. Con 0:22 en marcha son 24:38, no 25
+            lleva = self.crono.transcurrido()
+            if self.crono.corriendo or lleva:
+                queda = segundos - lleva
+                if queda <= 0:
+                    return (f"El cronómetro ya ha pasado de "
+                            f"{cronometro.tiempo_hablado(segundos)}.")
+                await self.poner_temporizador(queda)
+                return (f"Te aviso cuando el cronómetro llegue a "
+                        f"{cronometro.tiempo_hablado(segundos)}: dentro de "
+                        f"{cronometro.tiempo_hablado(queda)}.")
+            accion = "poner"               # sin cronómetro, es un aviso normal
         if accion == "poner":
             await self.poner_temporizador(segundos)
             frase = temporizador.frase_puesto(segundos)
@@ -919,7 +986,7 @@ class Conversacion:
             else:
                 frase = "No había ningún temporizador."
         print(f"[temporizador] {accion}")
-        await self.decir_turno(frase, "temporizador", pregunta)
+        return frase
 
     async def boton_cronometro(self, mensaje):
         """Un botón del panel. Sin voz: ya lo estás viendo."""

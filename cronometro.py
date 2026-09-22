@@ -37,7 +37,9 @@ VERBOS = {
     "empezar":   {"empieza", "empiezalo", "empezar", "inicia", "inicialo",
                   "iniciar", "arranca", "arrancalo", "arrancar", "comienza",
                   "pon", "ponme", "poner", "ponlo", "activa", "activalo",
-                  "enciende", "enciendelo", "encender", "dale", "start"},
+                  "enciende", "enciendelo", "encender", "dale", "start",
+                  # en primera persona: "lo empiezo al cronómetro"
+                  "empiezo", "enciendo", "arranco", "inicio", "pongo"},
     "pausar":    {"pausa", "pausalo", "pausar", "para", "paralo", "parar",
                   "deten", "detenlo", "detener", "stop", "congela"},
     "reanudar":  {"reanuda", "reanudalo", "reanudar", "continua", "continuar",
@@ -98,15 +100,68 @@ def _pregunta_tiempo(palabras):
     return "consultar_exacto" if any(p.startswith("exact") for p in palabras)         else "consultar"
 
 
+# Lo que Whisper escribe cuando oye estos verbos. "Enciende" suena
+# "en-cien-de" y salía "en 100 el cronómetro": sin verbo conocido, la frase
+# iba al modelo y acababa apuntada como una TAREA llamada "cronómetro".
+_OIDO_MAL = [
+    (re.compile(r"\ben (?:100|cien)(?: de)?\b"), "enciende"),
+    (re.compile(r"\bencienda\b"), "enciende"),
+    (re.compile(r"\ben pieza\b"), "empieza"),
+    (re.compile(r"\bre inicia\b"), "reinicia"),
+    (re.compile(r"\bpa usa\b"), "pausa"),
+]
+
+# Palabras que convierten la frase en una pregunta o un comentario SOBRE el
+# cronómetro, no en una orden: esas siguen su camino al conversador
+_HABLA_DE = {"que", "cual", "como", "por", "para", "tenia", "tengo", "tiene",
+             "compre", "comprar", "regalo", "regalaron", "funciona", "sirve",
+             "es", "era"}
+# Y estas, aunque lleven un verbo de orden: "¿PARA qué sirve un cronómetro?"
+# lo pausaba, porque "para" es también el verbo de pararlo
+_PREGUNTA_SOBRE = re.compile(r"\b(?:que es|para que|como funciona|cual es|sirve|"
+                             r"tenia|regal|compr)")
+
+
+def sin_tildes(texto):
+    return " ".join(_normal(texto))
+
+
+# Lo que queda de una "tarea" que en realidad era una orden mal entendida
+_SIN_CONTENIDO = {
+    "cronometro", "temporizador", "pomodoro", "jarvis", "el", "la", "lo", "los",
+    "al", "a", "de", "del", "en", "que", "un", "una", "y", "me", "ya", "100",
+    "cien", "minutos", "minuto", "hayan", "pasado", "avisar", "avisame",
+    "avisa", "pon", "ponme", "poner",
+} | {v for vs in VERBOS.values() for v in vs}
+
+
+def es_orden_sin_contenido(texto):
+    """"empiezo al cronómetro" -> True: no hay nada que apuntar.
+    "comprar un cronómetro nuevo" -> False: eso sí es una tarea."""
+    palabras = _normal(texto)
+    menciona = any(p.startswith(("cronometr", "temporizador", "pomodoro")) for p in palabras)
+    return menciona and all(p in _SIN_CONTENIDO or p.isdigit() for p in palabras)
+
+
+def trozos(texto):
+    """"Empieza el cronómetro y avísame en 25 minutos" -> dos órdenes."""
+    partes = re.split(r"\s*,?\s+y\s+(?:luego\s+|despues\s+)?", texto.strip())
+    return [p for p in partes if p.strip()]
+
+
 def orden(texto, visible=False):
     """La acción que pide la frase, o None si no va con el cronómetro."""
-    palabras = _normal(texto)
-    frase = " ".join(palabras)
+    frase = " ".join(_normal(texto))
+    for patron, bueno in _OIDO_MAL:
+        frase = patron.sub(bueno, frase)
+    palabras = frase.split()
 
     if any(p.startswith("cronometr") for p in palabras):
         pregunta = _pregunta_tiempo(palabras)
         if pregunta:
             return pregunta
+        if _PREGUNTA_SOBRE.search(frase):
+            return None
         if _A_CERO.search(frase):
             return "reiniciar"
         pedidas = [_ACCION_DE[p] for p in palabras if p in _ACCION_DE]
@@ -118,6 +173,12 @@ def orden(texto, visible=False):
         # es una pregunta y sigue su camino hacia el conversador
         resto = [p for p in palabras if p not in _RELLENO and p not in ("un", "mi")]
         if len(resto) == 1:
+            return "abrir"
+        # Una frase corta con "cronómetro" que no se entiende del todo es,
+        # casi seguro, una orden mal transcrita. Mejor abrirlo (y que diga
+        # "dime empieza cuando quieras") que dejar que el modelo apunte una
+        # tarea llamada "cronómetro". Si habla DEL cronómetro, no.
+        if len(resto) <= 3 and not _HABLA_DE & set(palabras):
             return "abrir"
         return None
 
