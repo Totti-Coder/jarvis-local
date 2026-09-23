@@ -77,6 +77,12 @@ CASOS = [
      "encadenadas:cronometro:empezar+temporizador:poner:1500", ""),
     ("Para el cronómetro y cancela el temporizador",
      "encadenadas:cronometro:pausar+temporizador:cancelar", "temp"),
+    # media frase es una orden fija y la otra media no: se hace la que se
+    # entiende y el resto sigue hacia el modelo, en vez de perderse
+    ("Borra las tres tareas y abre el cronómetro",
+     "parciales:cronometro:abrir|Borra las tres tareas", ""),
+    ("Pon el cronómetro y dime qué tengo mañana",
+     "parciales:cronometro:empezar|dime qué tengo mañana", ""),
 
     # ---- horas ----
     ("Empiezo con Acme", "horas:empezar", ""),
@@ -129,6 +135,11 @@ def etiqueta(det):
             f"cronometro:{d}" if t == "cronometro" else
             f"temporizador:{d[0]}" + (f":{int(d[1])}" if d[0].startswith("poner") else "")
             for t, d in dato)
+    if tipo == "parciales":
+        plan, resto = dato
+        return "parciales:" + "+".join(
+            f"cronometro:{d}" if t == "cronometro" else f"temporizador:{d[0]}"
+            for t, d in plan) + f"|{resto}"
     if tipo == "temporizador":
         return f"temporizador:{dato[0]}" + (f":{int(dato[1])}" if dato[0] == "poner" else "")
     if tipo == "cronometro":

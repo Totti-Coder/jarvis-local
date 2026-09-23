@@ -1396,6 +1396,54 @@
    "inactivo"
   ]
  ],
+ "media_frase": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "crono",
+   true,
+   false,
+   0.0
+  ],
+  [
+   "dicho",
+   "Aquí lo tienes. Dime empieza cuando quieras."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "estado",
+   "inactivo"
+  ],
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "completar_tarea"
+  ],
+  [
+   "token",
+   "Hoy tienes: dentista a las 5."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
  "crono_oido_mal": [
   [
    "estado",

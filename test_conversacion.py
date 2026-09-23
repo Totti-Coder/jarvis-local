@@ -194,6 +194,8 @@ ESCENARIOS = [
     # Quitar una rutina: antes caía en el router como "completar tarea"
     ("rutina_quitar",       "Vale, quitar modo trabajo",    ("completar_tarea", {"texto": "modo trabajo"}), None),
     ("rutina_quitar_nada",  "Quita el modo trabajo",        (None, None), None),
+    # Media frase entendida y media no: se hace una y la otra sigue al modelo
+    ("media_frase",         "Borra lo del gimnasio y abre el cronómetro", ("completar_tarea", {"texto": "gimnasio"}), None),
     # Las tres frases reales que acababan como TAREAS llamadas "cronómetro"
     ("crono_oido_mal",      "Jarvis en 100 el cronómetro",  ("anadir_tarea", {"texto": "cronometro"}), None),
     ("dos_ordenes",         "Lo empiezo al cronómetro y avísame los 25 minutos.", ("anadir_tarea", {"texto": "empiezo al cronometro"}), None),

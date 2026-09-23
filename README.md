@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-749_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-750_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -395,12 +395,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**749 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**750 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 605 de los 749 casos**, sin instalar una sola dependencia:
+**En CI corren 605 de los 750 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -410,7 +410,7 @@ que el runner no puede probar sería peor que no tener CI.
 
 ```bash
 python eval_router.py     # 108 frases · acierto por categoría · % global  (--voz: dichas y oídas)
-python eval_ordenes.py    # 72 órdenes fijas (cronómetro, temporizador, horas, rutinas)
+python eval_ordenes.py    # 74 órdenes fijas (cronómetro, temporizador, horas, rutinas)
 python eval_ordenes.py --voz   # las mismas, DICHAS por Piper y oídas por Whisper
 python test_memoria.py    # fechas y horas habladas          (37)
 python test_ventanas.py   # franjas, tramos, fines de semana (32)
@@ -447,7 +447,7 @@ oye nada. Con `--sonido` suenan de verdad.
 **Las órdenes se prueban también con voz.** `eval_ordenes.py --voz` hace que
 Piper diga cada frase y Whisper la transcriba, y evalúa lo que Whisper
 escribe. Así salieron *"en 100 el cronómetro"* (por *"enciende"*), *"ponen
-marcha"* o *"inicie"* antes de que le pasaran a nadie: **72/72 en texto, 94 %
+marcha"* o *"inicie"* antes de que le pasaran a nadie: **74/74 en texto, 94 %
 con voz**. Los fallos que quedan son órdenes de una palabra que la voz
 sintética pronuncia peor que una persona (*"Para"* → *"¡Dana!"*), y no se
 fuerzan: sería ajustar el sistema a los defectos de Piper, no a tu voz.

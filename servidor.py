@@ -685,7 +685,20 @@ class Conversacion:
 
     async def _ejecutar_orden(self, tipo, dato, pregunta, conocidos):
         """Hace la orden que ordenes.detectar ha reconocido."""
-        if tipo == "encadenadas":
+        if tipo == "parciales":
+            # Se hace lo que se entiende, se dice, y la otra mitad de la
+            # frase se atiende como si se hubiera dicho sola
+            plan, resto = dato
+            frases = []
+            for sub, orden_ in plan:
+                if sub == "cronometro":
+                    frases.append(await self._hacer_cronometro(orden_))
+                else:
+                    frases.append(await self._hacer_temporizador(*orden_))
+            print(f"[ordenes] {len(plan)} hechas, sigue con {resto!r}")
+            await self.decir_suelto(" ".join(frases), "cronómetro")
+            await self.responder(resto)
+        elif tipo == "encadenadas":
             frases = []
             for sub, orden_ in dato:
                 if sub == "cronometro":

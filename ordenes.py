@@ -49,17 +49,23 @@ def detectar(frase, estado=None):
     # su camino, que es mejor que hacer la mitad
     partes = cronometro.trozos(frase)
     if len(partes) > 1:
-        plan, visible = [], estado.crono_visible
+        plan, resto, visible = [], [], estado.crono_visible
         for parte in partes:
             t = temporizador.orden(parte, estado.temporizador_activo)
             c = None if t else cronometro.orden(parte, visible)
             if not (t or c):
-                plan = None
-                break
+                resto.append(parte)
+                continue
             plan.append(("temporizador", t) if t else ("cronometro", c))
             visible = visible or c in ("abrir", "empezar", "reanudar", "reiniciar")
-        if plan:
+        if plan and not resto:
             return ("encadenadas", plan)
+        if plan and resto:
+            # Media frase es una orden fija y la otra media no ("borra las
+            # tres tareas y abre el cronómetro"). Antes ganaba la orden fija
+            # sobre la frase ENTERA y la otra mitad se perdía sin avisar.
+            # Ahora se hace la que se entiende y el resto sigue su camino.
+            return ("parciales", (plan, " y ".join(resto)))
 
     t = temporizador.orden(frase, estado.temporizador_activo)
     if t:
