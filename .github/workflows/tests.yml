@@ -101,3 +101,9 @@ jobs:
         run: |
           python -m pip install --quiet pip-audit
           pip-audit --requirement requirements.txt --no-deps --strict
+
+      - name: URLs seguras — nada de leer tu red local (SSRF)
+        run: python test_url_segura.py
+
+      - name: Copia diaria de la base de datos
+        run: python test_respaldo.py

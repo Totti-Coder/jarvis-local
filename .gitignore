@@ -37,3 +37,6 @@ _audio/
 
 # Registro del servidor cuando arranca con lanzador.pyw
 jarvis.log
+
+# Copias de seguridad de la base de datos (tus datos)
+copias/

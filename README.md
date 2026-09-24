@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-786_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-825_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -404,12 +404,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**786 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**825 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 635 de los 786 casos**, sin instalar una sola dependencia:
+**En CI corren 674 de los 825 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -420,6 +420,7 @@ que el runner no puede probar sería peor que no tener CI.
 ```bash
 python eval_router.py     # 108 frases · acierto por categoría · % global  (--voz: dichas y oídas)
 python eval_ordenes.py    # 74 órdenes fijas (cronómetro, temporizador, horas, rutinas)
+python eval_conversador.py     # ¿promete cosas que no puede hacer? (mide con el modelo)
 python eval_ordenes.py --voz   # las mismas, DICHAS por Piper y oídas por Whisper
 python test_memoria.py    # fechas y horas habladas          (37)
 python test_ventanas.py   # franjas, tramos, fines de semana (32)
@@ -481,6 +482,8 @@ Jarvis acaba teniendo acceso a tu calendario, tu correo y tu ordenador.
 | 👀 **Nada irreversible sin verlo** | Apagar, reiniciar y enviar se confirman antes |
 | 🧱 **Lista blanca** | Nunca ejecuta un comando salido de tu voz |
 | 💉 **Barrera de inyección** | Web y correo van al modelo **sin herramientas** |
+| 🚫 **No lee tu red local** | Al abrir páginas de una búsqueda: nada de `127.0.0.1`, IPs privadas ni puertos raros, ni saltando por redirecciones |
+| 💾 **Copia diaria** | De la base de datos, siete días, al arrancar |
 | 📦 **Dependencias fijadas y auditadas** | Las 11 con versión exacta, y `pip-audit` en cada push |
 | ⏱️ **El modelo no cuelga el turno** | Límite de 45 s: un Ollama atascado se convierte en una frase, no en un reinicio |
 | 🙈 **Secretos fuera de git** | `.env`, `token.json`, `contactos.json`, `atajos.json` y la BD |
@@ -515,6 +518,8 @@ redactor.py     Redacción de correos y detección de negativas
 escucha.py      Whisper: cargar y transcribir
 filtro_voz.py   Tira lo que Whisper se inventa en el silencio
 llm.py          La única puerta al modelo, con tiempo límite
+url_segura.py   Qué URLs puede abrir: nada de tu red local (SSRF)
+respaldo.py     Copia diaria de la base de datos, 7 días
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
 memoria.py      SQLite + intérprete de fechas en español
@@ -573,6 +578,8 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_tiempo.py          # El tiempo, sin tocar la red     (31 casos)
 ├── test_filtro_voz.py      # Alucinaciones de Whisper       (30 casos)
 ├── test_llm.py             # Un Ollama atascado no cuelga    (6 casos)
+├── test_url_segura.py      # SSRF: nada de leer tu red      (30 casos)
+├── test_respaldo.py        # Copia diaria y rotación         (9 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

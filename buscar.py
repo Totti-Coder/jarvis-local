@@ -89,17 +89,24 @@ def leer_pagina(url):
     import html
     import urllib.request
 
+    import url_segura
+
     try:
         pet = urllib.request.Request(url, headers={
             # Sin un User-Agent normal, muchos sitios responden 403
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Accept-Language": "es-ES,es;q=0.9",
         })
-        with urllib.request.urlopen(pet, timeout=TIMEOUT_PAGINA) as r:
+        # Las URLs vienen del buscador, no del usuario: una que apunte a
+        # 127.0.0.1 o a la red local se leería DESDE este PC (ver url_segura)
+        with url_segura.abrir(pet, timeout=TIMEOUT_PAGINA) as r:
             if "html" not in r.headers.get("Content-Type", "").lower():
                 return ""
             crudo = r.read(400_000)
         texto = crudo.decode("utf-8", errors="ignore")
+    except PermissionError as e:
+        print(f"[web] {e}")
+        return ""
     except Exception:
         return ""
 

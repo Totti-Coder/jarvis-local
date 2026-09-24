@@ -38,6 +38,7 @@ import guardia
 import horas
 import memoria
 import ordenes
+import respaldo
 import rutinas
 import temporizador
 import sistema
@@ -58,6 +59,14 @@ AQUI = Path(__file__).parent
 
 memoria.preparar()
 horas.preparar()
+# Una copia al día de la base de datos: ahí están las tareas y las horas
+# facturables, y no hay ninguna nube detrás que las guarde (ver respaldo.py)
+try:
+    _copia = respaldo.hacer(memoria.BASE)
+    if _copia:
+        print(f"  copia de seguridad: {_copia.name}")
+except Exception as _e:
+    print(f"  aviso: no se pudo hacer la copia de seguridad ({_e})")
 # La agenda tambien lee Google Calendar. Se engancha aqui, en el servidor,
 # y no dentro de memoria: asi los tests de memoria siguen sacando la lista
 # solo de SQLite y dan lo mismo tengas lo que tengas en tu calendario.

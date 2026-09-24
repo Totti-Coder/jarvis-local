@@ -99,6 +99,8 @@ bueno entra.
 | Una rutina encadena algo peligroso | Sus pasos son de una lista cerrada (abrir, cerrar, atajo, cronómetro, horas), nunca un comando. Un atajo que pide confirmación no puede ir en una rutina | `rutinas.py` |
 | Inyección de fórmulas en el CSV de horas | Una celda que empieza por `=` `+` `-` `@` se neutraliza antes de escribirla | `horas.py` |
 | Robo de la cuenta de Google | Permisos mínimos: Gmail puede leer y redactar pero **no borrar**; Calendar solo eventos | `correo.py`, `calendario.py` |
+| **Leer una URL que apunta a tu red (SSRF)** | Las URLs vienen del buscador, no del usuario. Se bloquean `127.0.0.1`, las IPs privadas, los puertos que no sean 80/443 y los esquemas raros, y se revisa cada redirección | `url_segura.py` |
+| Perder la base de datos (tareas, horas facturables) | Copia diaria al arrancar, con la API de SQLite, rotando siete días | `respaldo.py` |
 | Una dependencia comprometida o vulnerable | Las 11 con versión exacta en `requirements.txt`, y `pip-audit` en cada push del CI. Sin fijarlas, `pip install` trae la última que haya, que es el vector de cadena de suministro más común | `requirements.txt`, CI |
 | **Whisper alucina y dispara una orden** | No devuelve silencio ante el silencio: con ruido escribió *"¡Suscríbete!"*. Si cae en "para" o "dale", el asistente actuaría solo. Se descarta por la probabilidad de no-voz del modelo, con el umbral medido | `filtro_voz.py` |
 | El modelo se atasca y el turno queda colgado | Tiempo límite de 45 s por trozo: se avisa y la conversación sigue | `llm.py` |
