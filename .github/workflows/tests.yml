@@ -79,3 +79,6 @@ jobs:
 
       - name: El tiempo — Open-Meteo, sin red en el test
         run: python test_tiempo.py
+
+      - name: Alucinaciones de Whisper — descartar lo que nadie dijo
+        run: python test_filtro_voz.py

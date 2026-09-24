@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-750_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-780_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -119,6 +119,15 @@ medición, no de una intuición.
 - **⚙️ El bug que costaba 14×** — Las dos llamadas usaban `num_ctx` distinto.
   Ollama **recargaba el modelo entero en cada turno**: 17,3 s por pregunta
   contra 1,2 s. Un solo parámetro.
+
+- **🔇 Whisper no calla ante el silencio** — Devuelve una frase: con un
+  segundo de nada escribió *"Este es el canal de subtítulos..."*; con un golpe
+  en la mesa, *"Subtítulos por la comunidad de Amara.org"*. Si la alucinación
+  cae en una palabra que es orden (*"para"*, *"dale"*), el asistente actúa sin
+  que nadie haya hablado. Se descarta con la probabilidad de no-voz que el
+  propio modelo devuelve, **medida antes de elegir el umbral**: sin voz 0,76 a
+  0,90; con voz 0,02 a 0,41, así que el corte va en 0,6. El `avg_logprob` NO
+  servía: *"Para"* da −1,05, peor que varias alucinaciones.
 
 - **📊 Espectro FFT, no volumen** — El anillo reacciona a 32 bandas
   logarítmicas por FFT, 20 veces por segundo. En escala lineal era inservible
@@ -395,12 +404,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**750 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**780 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 605 de los 750 casos**, sin instalar una sola dependencia:
+**En CI corren 635 de los 780 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -502,6 +511,7 @@ guardia.py      Quién puede conectarse: Origin, Host y PIN
 router.py       12 herramientas y ~12 guardas deterministas
 redactor.py     Redacción de correos y detección de negativas
 escucha.py      Whisper: cargar y transcribir
+filtro_voz.py   Tira lo que Whisper se inventa en el silencio
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
 memoria.py      SQLite + intérprete de fechas en español
@@ -558,6 +568,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_rutinas.py         # Pasos, quitar, procesos       (55 casos)
 ├── test_temporizador.py    # Qué frase lo pone y cuál no    (47 casos)
 ├── test_tiempo.py          # El tiempo, sin tocar la red     (31 casos)
+├── test_filtro_voz.py      # Alucinaciones de Whisper       (30 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

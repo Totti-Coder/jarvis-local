@@ -14,6 +14,7 @@ import numpy as np
 from faster_whisper import WhisperModel
 from faster_whisper.vad import VadOptions, get_speech_timestamps
 
+import filtro_voz
 from ajustes import FRECUENCIA, MODELO_BUENO, MODELO_RAPIDO
 
 AQUI = Path(__file__).parent
@@ -112,9 +113,23 @@ def transcribir(audio, modelo, etiqueta=""):
         # el audio con ruido. Las parciales van con 1, que es de usar y tirar.
         haz = 1 if modelo is stt_rapido else 5
         segmentos, _ = modelo.transcribe(audio, language="es", beam_size=haz)
-        texto = " ".join(s.text for s in segmentos).strip()
+        trozos = list(segmentos)
+        texto = " ".join(s.text for s in trozos).strip()
+        # La MENOR de todas: basta con que un trozo tenga voz de verdad
+        sin_habla = min((s.no_speech_prob for s in trozos), default=None)
     total = time.monotonic() - t0
+
+    # Whisper no calla ante el silencio: se inventa una frase de subtítulos.
+    # Si cae en una palabra que es orden ("para", "sigue"), Jarvis actuaría
+    # sin que nadie haya hablado. Ver filtro_voz.py
+    tirar, motivo = filtro_voz.parece_alucinacion(texto, sin_habla)
+    if tirar and texto:
+        print(f"[{etiqueta or 'stt'}] descartado, {motivo}: {texto[:50]!r}")
+    if tirar:
+        return ""
+
     if etiqueta:
         print(f"[{etiqueta}] {total:.1f}s (espera {espera:.1f}s) "
-              f"{len(audio)/FRECUENCIA:.1f}s de audio -> {texto[:60]!r}")
+              f"{len(audio)/FRECUENCIA:.1f}s de audio -> {texto[:60]!r}"
+              + (f" (sin voz {sin_habla:.2f})" if sin_habla is not None else ""))
     return texto
