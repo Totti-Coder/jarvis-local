@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import ollama
+import llm
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -636,6 +636,10 @@ class Conversacion:
             return
 
         nombre, args = await self._enrutar(pregunta)
+        if nombre == "__atasco__":
+            await self.decir_turno("El modelo ha tardado demasiado. "
+                                   "Dímelo otra vez.", None, pregunta)
+            return
 
         # Si el modelo quiere APUNTAR una tarea que habla del cronómetro o
         # del temporizador, es una orden que no se ha entendido (Whisper
@@ -996,6 +1000,11 @@ class Conversacion:
             print(f"[router] {time.monotonic()-t0:.1f}s -> "
                   f"{nombre or 'conversación'}")
             return nombre, args
+        except llm.SeAtasco as e:
+            # Si el router se atasca, el conversador se atascaría igual:
+            # otra espera larga para acabar diciendo lo mismo
+            print(f"[router] {e}")
+            return "__atasco__", None
         except Exception as e:
             print(f"Error en el router: {e}")
             return None, None
@@ -1501,7 +1510,7 @@ class Conversacion:
 
         def producir():
             try:
-                flujo = ollama.chat(
+                flujo = llm.chat(
                     model=MODELO_LLM,
                     messages=self.historial,
                     stream=True,
@@ -1511,6 +1520,9 @@ class Conversacion:
                     trozo = parte["message"]["content"]
                     if trozo:
                         bucle.call_soon_threadsafe(cola.put_nowait, trozo)
+            except llm.SeAtasco as e:
+                bucle.call_soon_threadsafe(cola.put_nowait, ("__error__", "atasco"))
+                print(f"[llm] {e}")
             except Exception as e:
                 bucle.call_soon_threadsafe(cola.put_nowait, ("__error__", str(e)))
             finally:
@@ -1551,7 +1563,9 @@ class Conversacion:
             print(f"Error al hablar con Ollama: {error}")
             self.historial.pop()
             await self.enviar(tipo="error",
-                              texto="No he podido pensar la respuesta.")
+                              texto=("El modelo ha tardado demasiado. Dímelo otra vez."
+                                     if error == "atasco"
+                                     else "No he podido pensar la respuesta."))
             await self.enviar(tipo="estado", valor="inactivo")
             return
 

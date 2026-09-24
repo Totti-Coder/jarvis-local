@@ -56,6 +56,12 @@ MAX_TURNOS = 8
 TEMPERATURA = 0.35
 # 2048 se quedaba corto y la conversación se olvidaba enseguida. No subo más
 # porque la VRAM va justa: Whisper y el modelo comparten los 8 GB.
+# Tiempo límite de cada llamada al modelo, POR TROZO recibido. Lo normal
+# son 0,5-1,2 s; la primera llamada tras arrancar puede irse a 20-30 s
+# porque Ollama carga el modelo en la GPU. Esto no corta respuestas lentas:
+# corta CUELGUES (ver llm.py)
+TIMEOUT_LLM_S = 45
+
 NUM_CTX = 4096
 MS_PARCIAL = 900             # cada cuánto refresca el texto en vivo
 

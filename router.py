@@ -17,7 +17,7 @@ import re
 import unicodedata
 from datetime import datetime
 
-import ollama
+import llm
 
 import correo
 import memoria
@@ -721,7 +721,7 @@ def prompt_router():
 
 def enrutar(pregunta):
     """¿Hace falta una herramienta? Devuelve (nombre, argumentos) o (None, None)."""
-    r = ollama.chat(
+    r = llm.chat(
         model=MODELO_LLM,
         messages=[{"role": "system", "content": prompt_router()},
                   {"role": "user", "content": pregunta}],

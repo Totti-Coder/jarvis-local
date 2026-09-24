@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-780_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-786_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -404,12 +404,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**780 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**786 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 635 de los 780 casos**, sin instalar una sola dependencia:
+**En CI corren 635 de los 786 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -481,6 +481,8 @@ Jarvis acaba teniendo acceso a tu calendario, tu correo y tu ordenador.
 | 👀 **Nada irreversible sin verlo** | Apagar, reiniciar y enviar se confirman antes |
 | 🧱 **Lista blanca** | Nunca ejecuta un comando salido de tu voz |
 | 💉 **Barrera de inyección** | Web y correo van al modelo **sin herramientas** |
+| 📦 **Dependencias fijadas y auditadas** | Las 11 con versión exacta, y `pip-audit` en cada push |
+| ⏱️ **El modelo no cuelga el turno** | Límite de 45 s: un Ollama atascado se convierte en una frase, no en un reinicio |
 | 🙈 **Secretos fuera de git** | `.env`, `token.json`, `contactos.json`, `atajos.json` y la BD |
 
 | 🛡️ **Ninguna web te lo controla** | `Origin` + `Host` en lista blanca: ni webs maliciosas ni *DNS rebinding* |
@@ -512,6 +514,7 @@ router.py       12 herramientas y ~12 guardas deterministas
 redactor.py     Redacción de correos y detección de negativas
 escucha.py      Whisper: cargar y transcribir
 filtro_voz.py   Tira lo que Whisper se inventa en el silencio
+llm.py          La única puerta al modelo, con tiempo límite
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
 memoria.py      SQLite + intérprete de fechas en español
@@ -569,6 +572,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_temporizador.py    # Qué frase lo pone y cuál no    (47 casos)
 ├── test_tiempo.py          # El tiempo, sin tocar la red     (31 casos)
 ├── test_filtro_voz.py      # Alucinaciones de Whisper       (30 casos)
+├── test_llm.py             # Un Ollama atascado no cuelga    (6 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

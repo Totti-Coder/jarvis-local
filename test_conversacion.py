@@ -300,7 +300,7 @@ async def un_turno(escenario):
                 yield {"message": {"content": t}}
         else:
             return {"message": {"content": "respuesta"}}
-    servidor.ollama.chat = chat_falso
+    servidor.llm.chat = chat_falso
 
     if pendiente:
         tipo, datos = pendiente

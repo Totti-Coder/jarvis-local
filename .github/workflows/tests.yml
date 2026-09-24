@@ -82,3 +82,22 @@ jobs:
 
       - name: Alucinaciones de Whisper — descartar lo que nadie dijo
         run: python test_filtro_voz.py
+
+  dependencias:
+    name: Dependencias sin vulnerabilidades conocidas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Todas las versiones estan fijadas en requirements.txt, asi que se
+      # audita linea a linea (--no-deps) contra la base de avisos de
+      # seguridad de Python. Sin esto, una vulnerabilidad conocida en una
+      # dependencia entraria sin que nadie se enterase.
+      - name: pip-audit
+        run: |
+          python -m pip install --quiet pip-audit
+          pip-audit --requirement requirements.txt --no-deps --strict
