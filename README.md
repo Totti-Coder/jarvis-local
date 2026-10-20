@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-825_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-843_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -120,6 +120,14 @@ medición, no de una intuición.
   Ollama **recargaba el modelo entero en cada turno**: 17,3 s por pregunta
   contra 1,2 s. Un solo parámetro.
 
+- **⏰ Un aviso que solo llega con la pestaña abierta no es un aviso** — El
+  vigilante vivía dentro de la conexión del navegador: sin pestaña, no había
+  recordatorios ni pomodoro. Ahora el reloj es **del servidor**, uno solo, y
+  el aviso busca una pestaña libre; si no hay ninguna, **lo dice en voz alta y
+  deja un aviso en la esquina de la pantalla**. El cronómetro y el temporizador
+  se guardan en SQLite con hora de pared, así que un reinicio no se los lleva:
+  comprobado matando el servidor a lo bruto y viendo que vuelve contando.
+
 - **🔇 Whisper no calla ante el silencio** — Devuelve una frase: con un
   segundo de nada escribió *"Este es el canal de subtítulos..."*; con un golpe
   en la mesa, *"Subtítulos por la comunidad de Amara.org"*. Si la alucinación
@@ -209,6 +217,7 @@ mover Whisper a CPU.
 - Tus propios atajos (`atajos.json`)
 - **Rutinas:** *"modo trabajo"* abre, cierra y pone el cronómetro, y
   cada paso se marca en pantalla según termina
+- **Avisa sin navegador:** por voz y con un aviso en pantalla
 - Lista blanca, nunca comandos libres
 
 </td>
@@ -404,12 +413,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**825 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**843 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 674 de los 825 casos**, sin instalar una sola dependencia:
+**En CI corren 688 de los 843 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -520,6 +529,8 @@ filtro_voz.py   Tira lo que Whisper se inventa en el silencio
 llm.py          La única puerta al modelo, con tiempo límite
 url_segura.py   Qué URLs puede abrir: nada de tu red local (SSRF)
 respaldo.py     Copia diaria de la base de datos, 7 días
+estado.py       Cronómetro y temporizador del servidor, guardados
+aviso_escritorio.py  Aviso en pantalla cuando no hay navegador
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
 memoria.py      SQLite + intérprete de fechas en español
@@ -580,6 +591,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_llm.py             # Un Ollama atascado no cuelga    (6 casos)
 ├── test_url_segura.py      # SSRF: nada de leer tu red      (30 casos)
 ├── test_respaldo.py        # Copia diaria y rotación         (9 casos)
+├── test_estado.py          # Sobrevivir a un reinicio       (14 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

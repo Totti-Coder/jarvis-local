@@ -737,6 +737,17 @@ def marcar_avisado(clave, ahora=None):
         return cur.rowcount == 1
 
 
+def desmarcar_avisado(clave):
+    """Devuelve el aviso a la cola: se cogio pero no se pudo dar.
+
+    Pasa cuando todas las pestanas estan ocupadas justo en ese momento. Sin
+    esto el aviso quedaria marcado como dado sin que nadie lo haya oido, que
+    es la peor forma de fallar: silenciosa.
+    """
+    with _conectar() as con:
+        con.execute("DELETE FROM avisos WHERE clave = ?", (clave,))
+
+
 def frase_de_aviso(texto, momento, ahora=None):
     """El aviso dicho en voz alta."""
     ahora = ahora or datetime.now()

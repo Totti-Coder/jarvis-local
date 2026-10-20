@@ -107,3 +107,6 @@ jobs:
 
       - name: Copia diaria de la base de datos
         run: python test_respaldo.py
+
+      - name: Cronómetro y temporizador sobreviven al reinicio
+        run: python test_estado.py

@@ -209,7 +209,7 @@ ESCENARIOS = [
 
 # El reloj de los escenarios. Sin fijarlo, "el 1 de septiembre" seria de
 # 2026 o de 2027 segun el dia en que se ejecutara el test.
-from datetime import datetime  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
 
 AHORA_FIJO = datetime(2026, 9, 16, 17, 0)
 
@@ -228,6 +228,15 @@ async def un_turno(escenario):
     sock = SocketFalso()
     conv = servidor.Conversacion(sock)
     conv.bucle_principal = asyncio.get_running_loop()
+    # El cronometro y el temporizador son del SERVIDOR, no de la pestaña:
+    # se reinician entre escenarios para que uno no herede del anterior
+    servidor.ahora_servidor = lambda: AHORA_FIJO   # el reloj del servidor
+    servidor.CRONO = servidor.cronometro.Cronometro()
+    if servidor.TAREA_TEMPORIZADOR:        # si no, la cuenta atras de un
+        servidor.TAREA_TEMPORIZADOR.cancel()   # escenario pisa al siguiente
+    servidor.TEMPORIZADOR = servidor.TAREA_TEMPORIZADOR = None
+    servidor.CONEXIONES.clear()
+    servidor.CONEXIONES.add(conv)      # como si la pestaña estuviera abierta
 
     # --- dobles, distintos segun el escenario ---
     servidor.enrutar = lambda p: ruta
@@ -276,7 +285,8 @@ async def un_turno(escenario):
         conv.crono.visible, conv.crono.desde = True, 40.0
     if nombre == "temporizador_queda":
         # Diez minutos (y medio segundo de margen: se dice a la baja)
-        conv.temporizador = {"fin": time.monotonic() + 600.5, "segundos": 1500}
+        conv.temporizador = {"fin": AHORA_FIJO + timedelta(seconds=600.5),
+                             "segundos": 1500}
     if nombre == "crono_panel_para":
         # En marcha desde hace 75 segundos, con un reloj que no se mueve
         conv.crono = servidor.cronometro.Cronometro(reloj=lambda: 100.0)
@@ -326,6 +336,7 @@ async def un_turno(escenario):
                 "asunto": "Cena", "mensaje": "Llego tarde"}}
 
     await conv.responder(frase)
+    servidor.CONEXIONES.discard(conv)
     return nombre, resumir(sock.mensajes)
 
 

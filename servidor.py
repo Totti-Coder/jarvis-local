@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +33,9 @@ from fastapi.staticfiles import StaticFiles
 import buscar
 import calendario
 import correo
+import aviso_escritorio
 import cronometro
+import estado
 import guardia
 import horas
 import memoria
@@ -84,6 +86,32 @@ print(f"  {correo.estado()}")
 # No retrasa ningún paso respecto a lo que se enseña: cada marca sale
 # cuando ese paso ha terminado de verdad.
 PAUSA_PASO_S = 0.18
+
+# ---------------------------------------------------------------
+# LO QUE ES DEL SERVIDOR, NO DE LA PESTAÑA
+#
+# El cronometro y el temporizador vivian dentro de la conexion: uno por
+# pestaña, y los dos se perdian al cerrar la ventana o reiniciar. Un
+# pomodoro que desaparece al cerrar la pestaña no sirve para concentrarse.
+# Ahora son unicos y se guardan en la base de datos (ver estado.py).
+# ---------------------------------------------------------------
+
+def ahora_servidor():
+    """La hora del servidor, en un solo sitio.
+
+    El cronometro y el temporizador cuentan con hora de pared porque se
+    guardan en la base de datos. Pasa por aqui para que los tests puedan
+    fijarla y no dependan de cuando se ejecuten.
+    """
+    return datetime.now()
+
+
+estado.preparar()
+CRONO = estado.cargar_crono()
+TEMPORIZADOR = None          # {"fin": datetime, "segundos": int}
+TAREA_TEMPORIZADOR = None
+CONEXIONES = set()           # las pestañas abiertas ahora mismo
+
 
 # Cada cuanto se mira si toca avisar de algo. Mas a menudo no aporta: los
 # avisos van con diez minutos de antelacion.
@@ -150,6 +178,167 @@ async def raiz():
                         headers={"Cache-Control": "no-store"})
 
 
+async def guardar_y_pintar_crono():
+    """El cronometro cambio: se guarda y se pinta en TODAS las pestañas."""
+    await asyncio.to_thread(estado.guardar_crono, CRONO)
+    for c in list(CONEXIONES):
+        await c.enviar(tipo="crono", **CRONO.estado())
+
+
+async def pintar_temporizador():
+    for c in list(CONEXIONES):
+        await c.enviar_temporizador()
+
+
+async def poner_temporizador(segundos, ahora=None):
+    """Uno solo para todo el servidor, y guardado: sobrevive a reiniciar."""
+    global TEMPORIZADOR, TAREA_TEMPORIZADOR
+    ahora = ahora or ahora_servidor()
+    if TAREA_TEMPORIZADOR:
+        TAREA_TEMPORIZADOR.cancel()
+    TEMPORIZADOR = {"fin": ahora + timedelta(seconds=segundos),
+                    "segundos": int(segundos)}
+    await asyncio.to_thread(estado.guardar_temporizador,
+                            TEMPORIZADOR["fin"], TEMPORIZADOR["segundos"])
+    TAREA_TEMPORIZADOR = asyncio.create_task(_esperar_temporizador())
+
+
+async def cancelar_temporizador():
+    global TEMPORIZADOR, TAREA_TEMPORIZADOR
+    if TAREA_TEMPORIZADOR:
+        TAREA_TEMPORIZADOR.cancel()
+    TEMPORIZADOR = TAREA_TEMPORIZADOR = None
+    await asyncio.to_thread(estado.guardar_temporizador, None, 0)
+
+
+async def _esperar_temporizador():
+    """Espera a que acabe y lo dice, haya pestañas abiertas o no."""
+    global TEMPORIZADOR, TAREA_TEMPORIZADOR
+    while TEMPORIZADOR:
+        queda = (TEMPORIZADOR["fin"] - ahora_servidor()).total_seconds()
+        if queda <= 0:
+            break
+        await asyncio.sleep(min(queda, 30))
+    if not TEMPORIZADOR:
+        return
+    total = TEMPORIZADOR["segundos"]
+    TEMPORIZADOR = TAREA_TEMPORIZADOR = None
+    await asyncio.to_thread(estado.guardar_temporizador, None, 0)
+    await pintar_temporizador()
+    # Si justo entonces estabas hablando, se espera a que quede libre: una
+    # alarma que suena a destiempo molesta, pero una que no suena no sirve
+    frase = temporizador.frase_acabado(total)
+    while not await entregar(frase, "temporizador"):
+        await asyncio.sleep(0.3)
+
+
+def _pestaña_libre():
+    """Una pestaña que pueda hablar ahora mismo, o None.
+
+    Libre es: ni grabando, ni pensando, ni hablando, y sin una pregunta en
+    el aire. Un aviso que pise un "¿apago el ordenador?" se traga el "si".
+    """
+    for c in CONEXIONES:
+        if not c.grabando and c.estado == "inactivo" and not c.pendiente["tipo"]:
+            return c
+    return None
+
+
+async def entregar(frase, etiqueta="recordatorio"):
+    """Hace llegar un aviso. Devuelve True si se entrego.
+
+    Con una pestaña libre, por ahi: se ve escrito y se oye.
+    Con las pestañas ocupadas, se espera a la siguiente vuelta.
+    SIN pestañas, que es lo normal cuando no estas delante del navegador,
+    se dice por los altavoces y se deja un aviso en la esquina de la
+    pantalla. Si solo avisara con la pagina abierta, no serviria para
+    acordarse de nada.
+    """
+    libre = _pestaña_libre()
+    if libre:
+        await libre.decir_suelto(frase, etiqueta)
+        return True
+    if CONEXIONES:
+        return False                  # ocupadas: en la siguiente vuelta
+    print(f"[aviso] sin pestañas abiertas: {frase}")
+    await asyncio.to_thread(hablar, frase)
+    await asyncio.to_thread(aviso_escritorio.mostrar, frase)
+    return True
+
+
+async def una_vuelta_de_avisos(ahora=None):
+    """Mira si toca avisar de algo. Separada del bucle para poder probarla."""
+    ahora = ahora or ahora_servidor()
+    try:
+        avisos = await asyncio.to_thread(memoria.pendientes_de_aviso)
+    except Exception as e:
+        print(f"[avisos] no se pudo mirar la agenda: {e}")
+        return False
+
+    for clave, texto, momento in avisos:
+        # marcar_avisado es atomico: con dos servidores o dos pestañas,
+        # solo uno se lo queda
+        if not await asyncio.to_thread(memoria.marcar_avisado, clave):
+            continue
+        frase = memoria.frase_de_aviso(texto, momento, ahora)
+        print(f"[avisos] {frase}")
+        if await entregar(frase):
+            return True
+        # No se pudo entregar: se desmarca para no perderlo
+        await asyncio.to_thread(memoria.desmarcar_avisado, clave)
+        return False
+
+    # Y la sesion de horas que lleva abierta demasiado
+    try:
+        r = await asyncio.to_thread(horas.recordatorio, ahora)
+    except Exception as e:
+        print(f"[horas] no se pudo mirar la sesion: {e}")
+        return False
+    if r and await asyncio.to_thread(memoria.marcar_avisado, r[0]):
+        print(f"[horas] {r[1]}")
+        if await entregar(r[1], "horas"):
+            return True
+        await asyncio.to_thread(memoria.desmarcar_avisado, r[0])
+    return False
+
+
+async def vigilante():
+    """El unico reloj del servidor: avisa haya pestañas o no."""
+    while True:
+        await asyncio.sleep(AVISO_CADA_S)
+        try:
+            await una_vuelta_de_avisos()
+            for c in list(CONEXIONES):
+                await c.enviar_horas()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[vigilante] {e}")
+
+
+@app.on_event("startup")
+async def arrancar_vigilante():
+    """Un solo vigilante para todo el servidor, abierto o no el navegador."""
+    asyncio.create_task(vigilante())
+
+    # Un temporizador que estaba en marcha al apagar: si aun no ha vencido
+    # se reanuda, y si vencio con el servidor parado se dice al volver en
+    # vez de tragarselo
+    global TEMPORIZADOR, TAREA_TEMPORIZADOR
+    guardado = await asyncio.to_thread(estado.cargar_temporizador, ahora_servidor())
+    if not guardado:
+        return
+    fin, segundos, vencido = guardado
+    if vencido:
+        await asyncio.to_thread(estado.guardar_temporizador, None, 0)
+        await entregar(estado.frase_vencido(segundos, fin), "temporizador")
+        return
+    TEMPORIZADOR = {"fin": fin, "segundos": segundos}
+    TAREA_TEMPORIZADOR = asyncio.create_task(_esperar_temporizador())
+    print(f"[temporizador] reanudado: quedan "
+          f"{(fin - ahora_servidor()).total_seconds():.0f} s")
+
+
 class Conversacion:
     """Una conexion del navegador: un microfono, un historial, un turno.
 
@@ -182,29 +371,57 @@ class Conversacion:
         self.tarea_limite = None
         self.tarea_silencio = None
 
-        self.tarea_avisos = None
         self.estado = "inactivo"
         # El reloj se inyecta, como en memoria: "lo del 1 de septiembre" es
         # de este año o del siguiente segun el dia en que se diga, y un test
         # que dependa del calendario de verdad cambia solo de resultado.
-        self.ahora = datetime.now
+        self.ahora = ahora_servidor
         # Uno por pestaña, como el historial: el panel lo pinta esta página
-        self.crono = cronometro.Cronometro()
+        # El cronometro y el temporizador NO son de esta pestaña: son del
+        # servidor. Aqui solo se enseñan y se manejan (ver estado.py)
         # Lo último que se mandó del fichaje: solo se reenvía si cambia. No
         # empieza en None porque None es "sin sesión": la primera vez no se
         # mandaría, y tras reiniciar el servidor la pestaña seguiría
         # enseñando una sesión que ya no existe
         self.horas_enviadas = "sin enviar"
-        # La cuenta atrás de esta pestaña: {"fin": monotonic, "segundos": total}
-        self.temporizador = None
-        self.tarea_temporizador = None
 
         # Se fija en correr(), que es cuando hay bucle de asyncio
         self.bucle_principal = None
 
+    # El cronometro y el temporizador son del servidor. Se exponen como
+    # atributos para no reescribir todo lo que ya los usaba, y porque los
+    # tests los sustituyen por uno controlado.
+    @property
+    def crono(self):
+        return CRONO
+
+    @crono.setter
+    def crono(self, valor):
+        global CRONO
+        CRONO = valor
+
+    @property
+    def temporizador(self):
+        return TEMPORIZADOR
+
+    @temporizador.setter
+    def temporizador(self, valor):
+        global TEMPORIZADOR
+        TEMPORIZADOR = valor
+
+    @property
+    def tarea_temporizador(self):
+        return TAREA_TEMPORIZADOR
+
+    @tarea_temporizador.setter
+    def tarea_temporizador(self, valor):
+        global TAREA_TEMPORIZADOR
+        TAREA_TEMPORIZADOR = valor
+
     async def correr(self):
         """Atiende la conexion hasta que el navegador se va."""
         await self.sock.accept()
+        CONEXIONES.add(self)
         self.bucle_principal = asyncio.get_running_loop()
         try:
             # La huella de la interfaz va lo primero. Al reiniciar el servidor,
@@ -218,7 +435,7 @@ class Conversacion:
             # de antes, contando un tiempo que ya no existe: se le corrige
             await self.enviar(tipo="crono", **self.crono.estado())
             await self.enviar_horas()
-            await self.enviar_temporizador()
+            await self.enviar_temporizador()      # lo que ya estuviera en marcha
 
             await self.enviar(tipo="estado", valor="inactivo")
 
@@ -267,7 +484,6 @@ class Conversacion:
                 await self.comandos.put(FIN)
 
             self.tarea_receptor = asyncio.create_task(receptor())
-            self.tarea_avisos = asyncio.create_task(self.vigilar_avisos())
 
             while True:
                 mensaje = await self.comandos.get()
@@ -379,9 +595,9 @@ class Conversacion:
         except WebSocketDisconnect:
             pass
         finally:
+            CONEXIONES.discard(self)
             for t in (self.tarea_medidor, self.tarea_parciales, self.tarea_limite,
-                      self.tarea_silencio, self.tarea_receptor, self.tarea_avisos,
-                      self.tarea_temporizador):
+                      self.tarea_silencio, self.tarea_receptor):
                 if t:
                     t.cancel()
             cortar_voz()          # si se va con el asistente hablando, que calle
@@ -736,7 +952,7 @@ class Conversacion:
         dos órdenes ("empieza el cronómetro y avísame en 25 minutos") se
         contesta de una vez."""
         frase = self.crono.aplicar(accion)
-        await self.enviar(tipo="crono", **self.crono.estado())
+        await guardar_y_pintar_crono()
         return frase
 
     async def _usar_cronometro(self, accion, pregunta):
@@ -845,14 +1061,13 @@ class Conversacion:
         hecho = []
         for tipo, valor in rutina["pasos"]:
             if tipo == "temporizador" and self.temporizador:
-                self.tarea_temporizador.cancel()
-                self.temporizador = self.tarea_temporizador = None
+                await cancelar_temporizador()
                 await self.enviar_temporizador()
                 hecho.append("pomodoro cancelado" if valor == "25" else "temporizador cancelado")
             elif (tipo == "cronometro" and valor in ("empezar", "reanudar")
                     and self.crono.corriendo):
                 self.crono.aplicar("pausar")
-                await self.enviar(tipo="crono", **self.crono.estado())
+                await guardar_y_pintar_crono()
                 hecho.append("cronómetro parado")
             elif tipo == "horas" and valor.lower() not in ("parar", "terminar"):
                 s = await asyncio.to_thread(horas.abierta)
@@ -896,7 +1111,7 @@ class Conversacion:
                         fallos.append(f"el cronómetro ({valor})")
                     else:
                         self.crono.aplicar(valor)
-                        await self.enviar(tipo="crono", **self.crono.estado())
+                        await guardar_y_pintar_crono()
                 elif tipo == "temporizador":
                     await self.poner_temporizador(int(valor) * 60)
                 elif tipo == "horas":
@@ -924,7 +1139,7 @@ class Conversacion:
     # ---------------------------------------------------------------
 
     def _queda(self):
-        return max(0.0, self.temporizador["fin"] - time.monotonic())
+        return max(0.0, (self.temporizador["fin"] - self.ahora()).total_seconds())
 
     async def enviar_temporizador(self):
         if self.temporizador:
@@ -934,27 +1149,9 @@ class Conversacion:
             await self.enviar(tipo="temporizador", queda=None, total=None)
 
     async def poner_temporizador(self, segundos):
-        """Uno por pestaña: poner otro sustituye al anterior."""
-        if self.tarea_temporizador:
-            self.tarea_temporizador.cancel()
-        self.temporizador = {"fin": time.monotonic() + segundos, "segundos": segundos}
-        self.tarea_temporizador = asyncio.create_task(self._esperar_temporizador())
+        """Uno solo para todo el servidor: poner otro sustituye al anterior."""
+        await poner_temporizador(segundos, self.ahora())
         await self.enviar_temporizador()
-
-    async def _esperar_temporizador(self):
-        await asyncio.sleep(self._queda())
-        # Si en ese momento estás hablando o Jarvis está contestando, el
-        # aviso espera a que quede libre: pisarte a media frase es peor
-        # que avisar un segundo tarde
-        while self.grabando or self.estado != "inactivo":
-            await asyncio.sleep(0.3)
-        total = self.temporizador["segundos"]
-        self.temporizador = None
-        self.tarea_temporizador = None
-        await self.enviar_temporizador()
-        frase = temporizador.frase_acabado(total)
-        print(f"[temporizador] {frase}")
-        await self.decir_suelto(frase, "temporizador")
 
     async def _usar_temporizador(self, accion, segundos, pregunta):
         frase = await self._hacer_temporizador(accion, segundos)
@@ -985,8 +1182,7 @@ class Conversacion:
                      else "No hay ningún temporizador en marcha.")
         else:                                           # cancelar
             if self.temporizador:
-                self.tarea_temporizador.cancel()
-                self.temporizador = self.tarea_temporizador = None
+                await cancelar_temporizador()
                 await self.enviar_temporizador()
                 frase = "Temporizador cancelado."
             else:
@@ -999,7 +1195,7 @@ class Conversacion:
         accion = mensaje.get("accion")
         if accion in cronometro.ACCIONES:
             self.crono.aplicar(accion)
-        await self.enviar(tipo="crono", **self.crono.estado())
+        await guardar_y_pintar_crono()
 
     async def _enrutar(self, pregunta):
         """¿Hace falta una herramienta? (None, None) si es charla."""
@@ -1619,54 +1815,6 @@ class Conversacion:
 
         await self.enviar(tipo="usuario", texto=texto)
         await self.responder(texto)
-
-    async def vigilar_avisos(self):
-        """Avisa un rato antes de lo que tienes apuntado. Sin que preguntes.
-
-        Solo habla cuando Jarvis esta libre: nunca mientras grabas, piensa o
-        contesta, ni con una pregunta en el aire (un "si" a "¿apago el
-        ordenador?" no puede quedar pisado por un recordatorio). Si esta
-        ocupado, el aviso espera a la siguiente vuelta.
-        """
-        while True:
-            await asyncio.sleep(AVISO_CADA_S)
-            if (self.grabando or self.estado != "inactivo"
-                    or self.pendiente["tipo"]):
-                continue
-            try:
-                avisos = await asyncio.to_thread(memoria.pendientes_de_aviso)
-            except Exception as e:
-                print(f"[avisos] no se pudo mirar la agenda: {e}")
-                continue
-            for clave, texto, momento in avisos:
-                # Mirar la agenda puede tardar (Google). Si mientras tanto
-                # has pulsado el micro, el aviso espera: no se marca como
-                # dado, asi que sale en la siguiente vuelta libre.
-                if (self.grabando or self.estado != "inactivo"
-                        or self.pendiente["tipo"]):
-                    break
-                # marcar_avisado es atomico: con dos pestanas abiertas solo
-                # una se lo queda, y la otra no lo repite
-                if not await asyncio.to_thread(memoria.marcar_avisado, clave):
-                    continue
-                frase = memoria.frase_de_aviso(texto, momento)
-                print(f"[avisos] {frase}")
-                await self.decir_suelto(frase, "recordatorio")
-                break          # de uno en uno: si hay otro, en la siguiente vuelta
-            else:
-                # Sin nada de la agenda, lo de las horas: una sesión que
-                # lleva abierta 3 h, 6 h... Misma tabla de avisos, así que
-                # con dos pestañas solo lo dice una, y cada tramo una vez
-                try:
-                    await self.enviar_horas()      # por si cambió en otra pestaña
-                    r = await asyncio.to_thread(horas.recordatorio, self.ahora())
-                    if (r and not self.grabando and self.estado == "inactivo"
-                            and not self.pendiente["tipo"]
-                            and await asyncio.to_thread(memoria.marcar_avisado, r[0])):
-                        print(f"[horas] {r[1]}")
-                        await self.decir_suelto(r[1], "horas")
-                except Exception as e:
-                    print(f"[horas] no se pudo mirar la sesión: {e}")
 
     async def vigilar_limite(self):
         """Corta sola la grabación a los MAX_GRABACION_S segundos."""

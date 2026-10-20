@@ -172,11 +172,18 @@ def dichos(sock):
 
 
 async def vigilar_un_rato(*convs, segundos=0.15):
-    tareas = [asyncio.create_task(c.vigilar_avisos()) for c in convs]
-    await asyncio.sleep(segundos)
-    for t in tareas:
-        t.cancel()
-    await asyncio.gather(*tareas, return_exceptions=True)
+    """Deja al vigilante del SERVIDOR dar una vuelta con esas pestañas.
+
+    Antes el vigilante era de cada pestaña; ahora es uno solo y los avisos
+    salen aunque no haya ninguna abierta (ver servidor.entregar).
+    """
+    servidor.CONEXIONES.clear()
+    servidor.CONEXIONES.update(convs)
+    fin = asyncio.get_running_loop().time() + segundos
+    while asyncio.get_running_loop().time() < fin:
+        await servidor.una_vuelta_de_avisos()
+        await asyncio.sleep(0.01)
+    servidor.CONEXIONES.clear()
 
 
 def con_un_aviso():
@@ -243,34 +250,44 @@ async def escenarios():
     def barra(sock):
         return [m for m in sock.mensajes if m.get("tipo") == "temporizador"]
 
+    async def con_pestaña(conv, segundos=0.4):
+        """El temporizador es del servidor; la pestaña solo lo enseña."""
+        servidor.CONEXIONES.clear()
+        servidor.CONEXIONES.add(conv)
+        await asyncio.sleep(segundos)
+        servidor.CONEXIONES.clear()
+
     s = SocketFalso()
     c = servidor.Conversacion(s)
+    servidor.CONEXIONES.add(c)
     await c.poner_temporizador(0.05)
     comprueba("temporizador: la barra lo enseña al ponerlo",
               barra(s)[-1]["queda"] is not None, barra(s))
     await asyncio.sleep(0.25)
     comprueba("temporizador: suena al acabar", len(acabados(s)) == 1, dichos(s))
     comprueba("temporizador: y la barra se apaga", barra(s)[-1]["queda"] is None, barra(s)[-1])
+    servidor.CONEXIONES.clear()
 
     s = SocketFalso()
     c = servidor.Conversacion(s)
     c.grabando = True
+    servidor.CONEXIONES.add(c)
     await c.poner_temporizador(0.05)
     await asyncio.sleep(0.25)
     comprueba("temporizador: mientras hablas, espera", acabados(s) == [], dichos(s))
     c.grabando = False
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.6)          # reintenta cada 0,3 s hasta poder
     comprueba("temporizador: y suena al quedar libre", len(acabados(s)) == 1, dichos(s))
+    servidor.CONEXIONES.clear()
 
     s = SocketFalso()
     c = servidor.Conversacion(s)
+    servidor.CONEXIONES.add(c)
     await c.poner_temporizador(0.1)
-    await c._usar_temporizador("cancelar", None, "cancela el temporizador")
+    await servidor.cancelar_temporizador()
     await asyncio.sleep(0.3)
     comprueba("temporizador: cancelado, no suena", acabados(s) == [], dichos(s))
 
-    s = SocketFalso()
-    c = servidor.Conversacion(s)
     await c.poner_temporizador(0.1)
     await c.poner_temporizador(0.4)
     await asyncio.sleep(0.25)
@@ -278,19 +295,47 @@ async def escenarios():
               acabados(s) == [], dichos(s))
     await asyncio.sleep(0.4)
     comprueba("temporizador: suena solo el segundo", len(acabados(s)) == 1, dichos(s))
+    servidor.CONEXIONES.clear()
 
-    # Quitar la rutina cancela SU pomodoro: después no debe sonar
+    # ---- SIN NINGUNA PESTAÑA ABIERTA: lo que de verdad hace falta ----
+    dicho_en_voz, en_pantalla = [], []
+    servidor.hablar = lambda t: dicho_en_voz.append(t)
+    servidor.aviso_escritorio.mostrar = lambda t: en_pantalla.append(t) or True
+
+    await servidor.cancelar_temporizador()
+    servidor.CONEXIONES.clear()
+    await servidor.poner_temporizador(0.05)
+    await asyncio.sleep(0.3)
+    comprueba("sin pestañas, el temporizador se dice en voz alta",
+              any("Se acabó" in t for t in dicho_en_voz), dicho_en_voz)
+    comprueba("y deja un aviso en la pantalla",
+              any("Se acabó" in t for t in en_pantalla), en_pantalla)
+
+    dicho_en_voz.clear()
+    en_pantalla.clear()
+    con_un_aviso()
+    await servidor.una_vuelta_de_avisos()
+    comprueba("sin pestañas, el recordatorio de la agenda también",
+              any("dentista" in t for t in dicho_en_voz), dicho_en_voz)
+    comprueba("y también se ve en la pantalla",
+              any("dentista" in t for t in en_pantalla), en_pantalla)
+
+    # Con las pestañas ocupadas, el aviso NO se pierde: vuelve a la cola
+    dicho_en_voz.clear()
+    con_un_aviso()
     s = SocketFalso()
-    c = servidor.Conversacion(s)
-    await c.poner_temporizador(0.2)
-    await c._quitar_rutina({"nombre": "modo trabajo", "pasos": [("cerrar", "roblox"),
-                                                                ("temporizador", "25")]},
-                           "quita el modo trabajo")
-    dicho = [m["texto"] for m in s.mensajes if m.get("tipo") == "token"]
-    await asyncio.sleep(0.4)
-    comprueba("quitar la rutina cancela su pomodoro, y lo dice",
-              dicho == ["Rutina modo trabajo desactivada: pomodoro cancelado."], dicho)
-    comprueba("y después ya no suena", acabados(s) == [], dichos(s))
+    ocupada = servidor.Conversacion(s)
+    ocupada.grabando = True
+    servidor.CONEXIONES.add(ocupada)
+    await servidor.una_vuelta_de_avisos()
+    comprueba("con la pestaña ocupada no se dice",
+              dichos(s) == [] and not dicho_en_voz, (dichos(s), dicho_en_voz))
+    ocupada.grabando = False
+    await servidor.una_vuelta_de_avisos()
+    comprueba("pero no se pierde: sale al quedar libre",
+              len(dichos(s)) == 1 and "dentista" in dichos(s)[0], dichos(s))
+    servidor.CONEXIONES.clear()
+    servidor.hablar = lambda t: None
 
 
 asyncio.run(escenarios())
