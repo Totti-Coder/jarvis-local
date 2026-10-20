@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass, field
 
 import cronometro
+import diario
 import horas
 import rutinas
 import temporizador
@@ -96,6 +97,8 @@ def detectar(frase, estado=None):
         return ("horas", h)
     if es_deshacer(frase):
         return ("deshacer", None)
+    if diario.preguntan_por_el_diario(frase):
+        return ("diario", None)
     r = rutinas.buscar_quitar(frase, estado.rutinas)
     if r:
         return ("quitar_rutina", r)

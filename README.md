@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-863_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-898_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -414,12 +414,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**863 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**898 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 706 de los 863 casos**, sin instalar una sola dependencia:
+**En CI corren 738 de los 898 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -471,6 +471,12 @@ marcha"* o *"inicie"* antes de que le pasaran a nadie: **81/81 en texto, 94 %
 con voz**. Los fallos que quedan son órdenes de una palabra que la voz
 sintética pronuncia peor que una persona (*"Para"* → *"¡Dana!"*), y no se
 fuerzan: sería ajustar el sistema a los defectos de Piper, no a tu voz.
+
+**Y ahora los recoge solo.** Cuando Jarvis contesta *"no encuentro eso"* o
+*"no te he entendido"*, apunta la frase en un diario local
+([`diario.py`](diario.py)). `python diario.py --eval` las saca ya con formato
+de caso, listas para pegarlas en el eval que toque. Antes esto dependía de que
+alguien estuviera delante para verlo.
 
 **Cada bug encontrado se convierte en un caso permanente.** El set del router
 creció de 42 a 108 frases así: cada vez que enrutaba mal algo real, esa frase
@@ -533,6 +539,7 @@ url_segura.py   Qué URLs puede abrir: nada de tu red local (SSRF)
 respaldo.py     Copia diaria de la base de datos, 7 días
 estado.py       Cronómetro y temporizador del servidor, guardados
 papelera.py     Deshacer lo borrado: 30 días, y recrea en Calendar
+diario.py       Apunta lo que no entendió, para convertirlo en tests
 aviso_escritorio.py  Aviso en pantalla cuando no hay navegador
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
@@ -596,6 +603,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_respaldo.py        # Copia diaria y rotación         (9 casos)
 ├── test_estado.py          # Sobrevivir a un reinicio       (14 casos)
 ├── test_papelera.py        # Deshacer lo borrado            (20 casos)
+├── test_diario.py          # Apuntar lo no entendido        (35 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

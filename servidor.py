@@ -35,6 +35,7 @@ import calendario
 import correo
 import aviso_escritorio
 import cronometro
+import diario
 import estado
 import guardia
 import horas
@@ -66,6 +67,8 @@ horas.preparar()
 # Va enganchado aqui y no dentro de memoria: asi los tests de memoria no
 # escriben en la papelera y siguen dando lo mismo.
 papelera.preparar()
+# Lo que Jarvis no entiende se apunta para poder arreglarlo (ver diario.py)
+diario.preparar()
 memoria.al_borrar = papelera.apuntar_tareas
 horas.al_borrar = papelera.apuntar_sesion
 # Una copia al día de la base de datos: ahí están las tareas y las horas
@@ -677,6 +680,12 @@ class Conversacion:
         await self.enviar(tipo="fin_respuesta")
         await self.enviar(tipo="estado", valor="inactivo")
 
+        # Si la respuesta fue "no encuentro eso" o "no te he entendido", se
+        # apunta la frase: es materia prima para los evals, y hasta ahora
+        # solo se recogia si alguien estaba delante para contarlo
+        if diario.parece_fallo(frase):
+            await asyncio.to_thread(diario.apuntar, pregunta, frase, self.ahora())
+
     async def avanzar_correo(self, borrador, pregunta=None):
         """Pide lo que le falte al correo, y abre el popup cuando esté.
 
@@ -957,6 +966,9 @@ class Conversacion:
             await self._correr_rutina(dato, pregunta)
         elif tipo == "deshacer":
             await self._deshacer(pregunta)
+        elif tipo == "diario":
+            frase = await asyncio.to_thread(diario.frase_resumen, 7, self.ahora())
+            await self.decir_turno(frase, "diario", pregunta)
 
     async def _hacer_cronometro(self, accion):
         """Hace la orden y devuelve la frase, SIN decirla: así una frase con
@@ -1684,15 +1696,11 @@ class Conversacion:
         if not resultado:
             return False              # si falla, se sigue como conversación
 
-        await self.enviar(tipo="herramienta", nombre=nombre)
-        await self.enviar(tipo="token", texto=resultado)
-        await self.enviar(tipo="estado", valor="hablando")
-        await asyncio.to_thread(hablar, resultado)
-        self.historial.append({"role": "user", "content": pregunta})
-        self.historial.append({"role": "assistant", "content": resultado})
-        recortar_historial(self.historial)
-        await self.enviar(tipo="fin_respuesta")
-        await self.enviar(tipo="estado", valor="inactivo")
+        # Por decir_turno y no repitiendo aquí los mismos siete pasos: eran
+        # dos copias del mismo código, y al apuntar en el diario lo que no
+        # se entiende, esta copia se quedaba fuera. Justo las respuestas de
+        # las herramientas son las que dicen "no encuentro esa tarea".
+        await self.decir_turno(resultado, nombre, pregunta)
         return True
 
     # ---------------------------------------------------------------

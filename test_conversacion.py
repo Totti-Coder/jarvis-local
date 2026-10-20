@@ -194,6 +194,9 @@ ESCENARIOS = [
     # Quitar una rutina: antes caía en el router como "completar tarea"
     ("rutina_quitar",       "Vale, quitar modo trabajo",    ("completar_tarea", {"texto": "modo trabajo"}), None),
     ("rutina_quitar_nada",  "Quita el modo trabajo",        (None, None), None),
+    # Lo que no entendio se apunta solo, y se puede preguntar por ello
+    ("diario_pregunta",     "¿Qué no has entendido?",       (None, None), None),
+    ("diario_apunta",       "Quita lo del gimnasio",        ("completar_tarea", {"texto": "gimnasio"}), None),
     # Deshacer: lo que se borro por error vuelve a su sitio
     ("deshacer_nada",       "Deshazlo",                     (None, None), None),
     ("deshacer_algo",       "Deshazlo",                     (None, None), None),
@@ -245,7 +248,9 @@ async def un_turno(escenario):
     servidor.enrutar = lambda p: ruta
     servidor.hablar = lambda t: None
     servidor.ejecutar = lambda n, a: (
-        None if nombre == "herramienta_sin_dato" else "Hoy tienes: dentista a las 5.")
+        None if nombre == "herramienta_sin_dato" else
+        "No encuentro esa tarea en tu lista." if nombre == "diario_apunta" else
+        "Hoy tienes: dentista a las 5.")
 
     if nombre == "web_falla":
         servidor.buscar.buscar_y_leer = lambda c: ([], "sin conexión")
@@ -278,6 +283,12 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre.startswith("diario_"):
+        with memoria._conectar() as con:
+            con.execute("DELETE FROM no_entendido")
+    if nombre == "diario_pregunta":
+        servidor.diario.apuntar("pon el crono a tope", "No te he entendido bien.",
+                                AHORA_FIJO)
     if nombre.startswith("deshacer_"):
         # La papelera se comparte entre escenarios: se vacia para que
         # "no hay nada que deshacer" signifique eso de verdad
@@ -383,6 +394,15 @@ if __name__ == "__main__":
             fallos.append(nombre)
             print(f"        antes:  {e}")
             print(f"        ahora:  {a}")
+
+    # Lo que no se entendió tiene que quedar apuntado solo, y eso no sale
+    # en los mensajes: hay que mirar el diario
+    apuntadas = [f["dijiste"] for f in servidor.diario.ultimos(dias=7, ahora=AHORA_FIJO)]
+    if "Quita lo del gimnasio" in apuntadas:
+        print("  OK  lo que no se entendió quedó apuntado en el diario")
+    else:
+        fallos.append("el diario no apuntó la frase que no se entendió")
+        print(f"  MAL el diario debería tener esa frase: {apuntadas}")
 
     print("\n" + "=" * 70)
     print(f"  {'TODO IGUAL QUE ANTES' if not fallos else str(len(fallos)) + ' CAMINOS CAMBIADOS'}")

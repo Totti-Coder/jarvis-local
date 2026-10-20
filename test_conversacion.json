@@ -1396,6 +1396,58 @@
    "inactivo"
   ]
  ],
+ "diario_pregunta": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "diario"
+  ],
+  [
+   "token",
+   "Hubo una que no supe: pon el crono a tope."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "diario_apunta": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "completar_tarea"
+  ],
+  [
+   "token",
+   "No encuentro esa tarea en tu lista."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
  "deshacer_nada": [
   [
    "estado",

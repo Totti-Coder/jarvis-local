@@ -113,3 +113,6 @@ jobs:
 
       - name: Papelera — deshacer lo borrado por error
         run: python test_papelera.py
+
+      - name: Diario — apuntar lo que no entendió
+        run: python test_diario.py
