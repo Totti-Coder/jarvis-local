@@ -371,8 +371,18 @@ def describir(s, ahora=None):
     return f"{s['cliente']}, {momento_hablado(s['inicio'], ahora)}, {dura}"
 
 
+# Lo pone el servidor: se llama con la fila ANTES de borrarla
+al_borrar = None
+
+
 def borrar_sesion(id_):
     with memoria._conectar() as con:
+        fila = con.execute("SELECT * FROM sesiones WHERE id = ?", (id_,)).fetchone()
+        if fila and al_borrar is not None:
+            try:
+                al_borrar(dict(fila))
+            except Exception as e:
+                print(f"[papelera] no se pudo apuntar la sesión: {e}")
         return con.execute("DELETE FROM sesiones WHERE id = ?", (id_,)).rowcount == 1
 
 

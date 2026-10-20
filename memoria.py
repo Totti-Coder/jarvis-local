@@ -604,6 +604,11 @@ PALABRAS_VACIAS = {"el", "la", "los", "las", "un", "una", "de", "del", "a",
 # Es la misma idea que el parametro `ahora`: lo que cambia solo se inyecta.
 fuente_externa = None      # funcion (desde, hasta) -> [ {texto, cuando_iso, ...} ]
 
+# Se llama con las tareas ANTES de completarlas, para que otro pueda
+# guardarlas y deshacerlo luego (ver papelera.py). None = nadie escucha,
+# que es como corren los tests de memoria.
+al_borrar = None           # funcion (filas) -> None
+
 # Lo mismo para ESCRIBIR. Antes memoria llamaba a Google directamente, y eso
 # hizo que la bateria de tests metiera eventos en el calendario real del
 # usuario: los tests aislaban SQLite con una base temporal, pero cada
@@ -876,6 +881,13 @@ def completar_varias(filas):
     """Marca como hechas todas esas, y las quita del calendario."""
     if not filas:
         return "No hay ninguna que quitar."
+    # Antes de tocar nada: que alguien pueda deshacerlo. Quien apunta es
+    # cosa de fuera (el servidor pone la papelera), igual que el calendario
+    if al_borrar is not None:
+        try:
+            al_borrar(filas)
+        except Exception as e:
+            print(f"[papelera] no se pudo apuntar el borrado: {e}")
     ids = [f["id"] for f in filas]
     with _conectar() as con:
         con.execute(
@@ -1059,6 +1071,11 @@ def completar_tarea(texto, ahora=None):
     mejor = buscar_tarea(texto)
     if not mejor:
         return "No encuentro esa tarea en tu lista."
+    if al_borrar is not None:
+        try:
+            al_borrar([mejor])
+        except Exception as e:
+            print(f"[papelera] no se pudo apuntar el borrado: {e}")
     with _conectar() as con:
         con.execute("UPDATE tareas SET hecha = 1 WHERE id = ?", (mejor["id"],))
 

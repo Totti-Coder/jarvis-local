@@ -12,12 +12,30 @@ servidor, la evaluación mediría una copia, y las copias se separan.
 Stdlib pura: corre en el CI.
 """
 
+import re
 from dataclasses import dataclass, field
 
 import cronometro
 import horas
 import rutinas
 import temporizador
+
+
+# "Deshazlo", "me he equivocado": devolver lo ultimo a su sitio. Va con los
+# patrones fijos y no con el modelo porque es lo que se dice justo despues
+# de un error, y ahi no se quiere esperar a que nadie lo interprete.
+_DESHACER = re.compile(
+    r"^(?:jarvis |vale |oye |espera |no |uy |ay )*"
+    r"(?:deshaz(?:lo|melo)?|deshacer|desacer|deshaga|"
+    r"(?:vuelve|volver) atras|recupera(?:lo|melo)?|restaura(?:lo)?|"
+    r"anula(?:lo)? lo ultimo|borra lo ultimo que (?:has )?hecho|"
+    r"me he equivocado|no era eso|eso no era|era mentira)"
+    r"(?: (?:lo|el|la) ultimo| eso| por favor)*[ .!]*$")
+
+
+def es_deshacer(frase):
+    """¿Pide deshacer lo último? "Deshazlo", "me he equivocado"."""
+    return bool(_DESHACER.match(" ".join(cronometro._normal(frase))))
 
 
 @dataclass
@@ -76,6 +94,8 @@ def detectar(frase, estado=None):
     h = horas.orden(frase, estado.sesion_abierta, estado.clientes)
     if h:
         return ("horas", h)
+    if es_deshacer(frase):
+        return ("deshacer", None)
     r = rutinas.buscar_quitar(frase, estado.rutinas)
     if r:
         return ("quitar_rutina", r)

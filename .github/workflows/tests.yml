@@ -110,3 +110,6 @@ jobs:
 
       - name: Cronómetro y temporizador sobreviven al reinicio
         run: python test_estado.py
+
+      - name: Papelera — deshacer lo borrado por error
+        run: python test_papelera.py

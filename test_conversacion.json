@@ -1396,6 +1396,66 @@
    "inactivo"
   ]
  ],
+ "deshacer_nada": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "horas",
+   null
+  ],
+  [
+   "herramienta",
+   "deshacer"
+  ],
+  [
+   "token",
+   "No tengo nada reciente que deshacer."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "deshacer_algo": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "horas",
+   null
+  ],
+  [
+   "herramienta",
+   "deshacer"
+  ],
+  [
+   "token",
+   "Recuperado: comprar pan."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
  "media_frase": [
   [
    "estado",
@@ -1521,7 +1581,7 @@
   [
    "temporizador",
    1478,
-   1478.0
+   1478
   ],
   [
    "herramienta",

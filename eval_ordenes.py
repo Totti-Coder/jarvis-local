@@ -104,6 +104,13 @@ CASOS = [
     ("Sal del modo trabajo", "quitar_rutina:modo trabajo", ""),
     ("Hora de comer", "rutina:hora de comer", ""),
 
+    # ---- deshacer lo último ----
+    ("Deshazlo", "deshacer", ""),
+    ("Deshaz lo último", "deshacer", ""),
+    ("Me he equivocado", "deshacer", ""),
+    ("Vuelve atrás", "deshacer", ""),
+    ("Recupéralo", "deshacer", ""),
+
     # ---- NO son órdenes fijas: tienen que llegar al modelo ----
     ("¿Qué hora es?", "modelo", ""),
     ("Apunta comprar pan mañana", "modelo", ""),
@@ -123,6 +130,8 @@ CASOS = [
     ("Cierra el navegador", "modelo", ""),
     ("Quita el dentista", "modelo", ""),
     ("Mándale un correo a Ana", "modelo", ""),
+    ("¿Qué puedo deshacer?", "modelo", ""),
+    ("Me he equivocado de hora al apuntar la cita", "modelo", ""),
 ]
 
 
@@ -146,6 +155,8 @@ def etiqueta(det):
         return f"cronometro:{dato}"
     if tipo == "horas":
         return f"horas:{dato[0]}"
+    if tipo == "deshacer":
+        return "deshacer"
     return f"{tipo}:{dato['nombre']}"
 
 

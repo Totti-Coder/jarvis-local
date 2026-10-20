@@ -40,6 +40,7 @@ import guardia
 import horas
 import memoria
 import ordenes
+import papelera
 import respaldo
 import rutinas
 import temporizador
@@ -61,6 +62,12 @@ AQUI = Path(__file__).parent
 
 memoria.preparar()
 horas.preparar()
+# Lo que se borra se guarda antes, para poder deshacerlo (ver papelera.py).
+# Va enganchado aqui y no dentro de memoria: asi los tests de memoria no
+# escriben en la papelera y siguen dando lo mismo.
+papelera.preparar()
+memoria.al_borrar = papelera.apuntar_tareas
+horas.al_borrar = papelera.apuntar_sesion
 # Una copia al día de la base de datos: ahí están las tareas y las horas
 # facturables, y no hay ninguna nube detrás que las guarde (ver respaldo.py)
 try:
@@ -76,6 +83,8 @@ if calendario.disponible():
     memoria.fuente_externa = calendario.eventos_para_agenda
     memoria.crear_externo = calendario.crear_evento
     memoria.borrar_externo = calendario.borrar_evento
+    # Un evento borrado en Google NO se recupera: se vuelve a crear
+    papelera.crear_externo = calendario.crear_evento
 print("Listo.")
 print(f"  {calendario.estado()}")
 print(f"  {correo.estado()}")
@@ -946,6 +955,8 @@ class Conversacion:
             await self._quitar_rutina(dato, pregunta)
         elif tipo == "rutina":
             await self._correr_rutina(dato, pregunta)
+        elif tipo == "deshacer":
+            await self._deshacer(pregunta)
 
     async def _hacer_cronometro(self, accion):
         """Hace la orden y devuelve la frase, SIN decirla: así una frase con
@@ -1079,6 +1090,13 @@ class Conversacion:
         frase += f": {', '.join(hecho)}." if hecho else "."
         print(f"[rutina] quitada {rutina['nombre']}: {hecho or 'nada que deshacer'}")
         await self.decir_turno(frase, "rutina", pregunta)
+
+    async def _deshacer(self, pregunta):
+        """Devuelve a su sitio lo último que se borró."""
+        frase = await asyncio.to_thread(papelera.deshacer, self.ahora())
+        print(f"[papelera] {frase}")
+        await self.enviar_horas()
+        await self.decir_turno(frase, "deshacer", pregunta)
 
     async def _correr_rutina(self, rutina, pregunta):
         """Los pasos en orden. Si uno falla, los demás siguen y se dice
@@ -1562,7 +1580,10 @@ class Conversacion:
             return False                  # tampoco esta ahi: que conteste el de siempre
 
         self.pendiente["tipo"] = "borrado_calendario"
-        self.pendiente["datos"] = [e["id"] for e in eventos]
+        # Se guarda TODO lo del evento, no solo su id: en Google el borrado
+        # es de verdad, y para deshacerlo hay que volver a crearlo
+        self.pendiente["datos"] = [
+            dict(calendario.como_tarea(e), id=e["id"]) for e in eventos]
         cuales = "; ".join(calendario.como_frase(e) for e in eventos[:3])
         if len(eventos) == 1:
             frase = (f"Eso no está en tu lista, pero sí en tu calendario: "
@@ -1573,17 +1594,22 @@ class Conversacion:
         await self.decir_turno(frase, "confirmar", pregunta)
         return True
 
-    async def _quitar_del_calendario(self, ids, pregunta):
+    async def _quitar_del_calendario(self, eventos, pregunta):
         """Ya ha dicho si quiere que se borren esos eventos de Google."""
         if not es_afirmacion(pregunta):
-            print(f"[calendar] NO confirmado: {len(ids)} eventos intactos")
+            print(f"[calendar] NO confirmado: {len(eventos)} eventos intactos")
             await self.decir_turno("Vale, los dejo.", "agenda", pregunta)
             return
-        hechos = 0
-        for identificador in ids:
+        hechos, borrados = 0, []
+        for evento in eventos:
+            identificador = evento["id"] if isinstance(evento, dict) else evento
             if await asyncio.to_thread(calendario.borrar_evento, identificador):
                 hechos += 1
-        print(f"[calendar] borrados {hechos} de {len(ids)}")
+                if isinstance(evento, dict):
+                    borrados.append(evento)
+        if borrados:
+            await asyncio.to_thread(papelera.apuntar_eventos, borrados)
+        print(f"[calendar] borrados {hechos} de {len(eventos)}")
         if hechos == 1:
             frase = "Hecho, lo he quitado del calendario."
         elif hechos:

@@ -60,6 +60,7 @@ Cada una salió de un fallo real o de una medición, no de una intuición.
 | Decisión | Por qué |
 |---|---|
 | **Las direcciones de correo se teclean, no se dictan** | Whisper oyó `"Pablojeroza2000arrobajemail.com"`. Un correo mal enviado no se recupera |
+| **Se puede deshacer, no solo confirmar** | Preguntar antes está bien, pero la confianza viene de poder equivocarse: *"deshazlo"* devuelve lo borrado 30 días, y vuelve a crear el evento de Calendar, que allí sí se borra de verdad |
 | **Lo irreversible se confirma enseñando qué se va a hacer** | *"El 1 de septiembre hay 116 cosas: comprar pan, 58 veces… ¿Las quito todas?"* Un "sí" a ciegas no vale |
 | **El cronómetro no pasa por el modelo** | *"Para"* tiene que parar ya. Un 8B tarda un segundo en decidir lo que una lista de verbos resuelve sin fallar |
 | **Busca en internet solo cuando hace falta** | Una búsqueda cuesta segundos. Para *"¿quién pintó Las Meninas?"* sobra |
@@ -85,7 +86,7 @@ Esta lista pesa tanto como la de funcionalidades.
 |---|---|
 | Acierto del router (elegir la acción correcta) | **108/108** frases reales · **98 %** dichas por voz |
 | Órdenes fijas entendidas (cronómetro, temporizador, horas, rutinas) | **74/74** en texto · **94 %** dichas por voz sintética |
-| Tests | **843 casos**, 688 en el CI |
+| Tests | **863 casos**, 706 en el CI |
 | Latencia de voz a respuesta | **~0,8 s** |
 | Promesas falsas del conversador (medido con el modelo, 120 respuestas) | **3 %** (era ~40 % antes de acotar el prompt) |
 | APIs de pago | **0** |

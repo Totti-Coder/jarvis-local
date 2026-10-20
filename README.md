@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-843_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-863_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -193,6 +193,7 @@ mover Whisper a CPU.
 - Borra por fecha: *"quita lo del 1 de septiembre"*
 - Lee y escribe tu Google Calendar
 - Te resume el día al entrar
+- **Deshacer:** *"me he equivocado"* devuelve lo borrado, hasta 30 días
 - **Te avisa 10 min antes**, sin preguntar
 
 </td>
@@ -413,12 +414,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**843 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**863 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 688 de los 843 casos**, sin instalar una sola dependencia:
+**En CI corren 706 de los 863 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -428,7 +429,7 @@ que el runner no puede probar sería peor que no tener CI.
 
 ```bash
 python eval_router.py     # 108 frases · acierto por categoría · % global  (--voz: dichas y oídas)
-python eval_ordenes.py    # 74 órdenes fijas (cronómetro, temporizador, horas, rutinas)
+python eval_ordenes.py    # 81 órdenes fijas (cronómetro, temporizador, horas, rutinas)
 python eval_conversador.py     # ¿promete cosas que no puede hacer? (mide con el modelo)
 python eval_ordenes.py --voz   # las mismas, DICHAS por Piper y oídas por Whisper
 python test_memoria.py    # fechas y horas habladas          (37)
@@ -466,7 +467,7 @@ oye nada. Con `--sonido` suenan de verdad.
 **Las órdenes se prueban también con voz.** `eval_ordenes.py --voz` hace que
 Piper diga cada frase y Whisper la transcriba, y evalúa lo que Whisper
 escribe. Así salieron *"en 100 el cronómetro"* (por *"enciende"*), *"ponen
-marcha"* o *"inicie"* antes de que le pasaran a nadie: **74/74 en texto, 94 %
+marcha"* o *"inicie"* antes de que le pasaran a nadie: **81/81 en texto, 94 %
 con voz**. Los fallos que quedan son órdenes de una palabra que la voz
 sintética pronuncia peor que una persona (*"Para"* → *"¡Dana!"*), y no se
 fuerzan: sería ajustar el sistema a los defectos de Piper, no a tu voz.
@@ -489,6 +490,7 @@ Jarvis acaba teniendo acceso a tu calendario, tu correo y tu ordenador.
 | 🔑 **Permisos mínimos** | Gmail: leer y redactar. **No puede borrar.** Calendar: solo eventos |
 | 📇 **Direcciones tecleadas** | Whisper oyó `"Pablojeroza2000arrobajemail.com"`. Un correo mal enviado no se recupera |
 | 👀 **Nada irreversible sin verlo** | Apagar, reiniciar y enviar se confirman antes |
+| ↩️ **Y si aun así te equivocas** | *"Deshazlo"* devuelve lo borrado 30 días, recreando hasta el evento de Calendar |
 | 🧱 **Lista blanca** | Nunca ejecuta un comando salido de tu voz |
 | 💉 **Barrera de inyección** | Web y correo van al modelo **sin herramientas** |
 | 🚫 **No lee tu red local** | Al abrir páginas de una búsqueda: nada de `127.0.0.1`, IPs privadas ni puertos raros, ni saltando por redirecciones |
@@ -530,6 +532,7 @@ llm.py          La única puerta al modelo, con tiempo límite
 url_segura.py   Qué URLs puede abrir: nada de tu red local (SSRF)
 respaldo.py     Copia diaria de la base de datos, 7 días
 estado.py       Cronómetro y temporizador del servidor, guardados
+papelera.py     Deshacer lo borrado: 30 días, y recrea en Calendar
 aviso_escritorio.py  Aviso en pantalla cuando no hay navegador
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
@@ -592,6 +595,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_url_segura.py      # SSRF: nada de leer tu red      (30 casos)
 ├── test_respaldo.py        # Copia diaria y rotación         (9 casos)
 ├── test_estado.py          # Sobrevivir a un reinicio       (14 casos)
+├── test_papelera.py        # Deshacer lo borrado            (20 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

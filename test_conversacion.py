@@ -194,6 +194,9 @@ ESCENARIOS = [
     # Quitar una rutina: antes caía en el router como "completar tarea"
     ("rutina_quitar",       "Vale, quitar modo trabajo",    ("completar_tarea", {"texto": "modo trabajo"}), None),
     ("rutina_quitar_nada",  "Quita el modo trabajo",        (None, None), None),
+    # Deshacer: lo que se borro por error vuelve a su sitio
+    ("deshacer_nada",       "Deshazlo",                     (None, None), None),
+    ("deshacer_algo",       "Deshazlo",                     (None, None), None),
     # Media frase entendida y media no: se hace una y la otra sigue al modelo
     ("media_frase",         "Borra lo del gimnasio y abre el cronómetro", ("completar_tarea", {"texto": "gimnasio"}), None),
     # Las tres frases reales que acababan como TAREAS llamadas "cronómetro"
@@ -275,6 +278,15 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre.startswith("deshacer_"):
+        # La papelera se comparte entre escenarios: se vacia para que
+        # "no hay nada que deshacer" signifique eso de verdad
+        with memoria._conectar() as con:
+            con.execute("DELETE FROM papelera")
+    if nombre == "deshacer_algo":
+        # Algo borrado hace un momento, esperando a que lo rescaten
+        memoria.anadir_tarea("comprar pan", "")
+        memoria.completar_tarea("comprar pan")
     if nombre == "aviso_del_crono":
         # El cronómetro lleva 22 segundos, como en la captura del usuario
         conv.crono = servidor.cronometro.Cronometro(reloj=lambda: 100.0)
