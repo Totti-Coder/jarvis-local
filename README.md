@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-898_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-945_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -233,7 +233,7 @@ llevo este mes?"*, exporta a CSV; entiende que *"Akme"* es Acme, se ve en la
 barra y, si te olvidas de parar, te lo recuerda y acepta *"terminé a las 7"*; se corrige hablando: *"ayer trabajé 2 horas para
 García"*, *"quítale media hora a Acme"*, *"borra la última sesión"*) · ⏱️ cronómetro por voz o con botones (*"páralo"*, *"¿cuánto
 llevamos?"*) · 🌐 busca en internet solo cuando la pregunta lo pide · 🧠 recuerda
-tu nombre y tus datos entre sesiones · 🤫 corta la grabación sola al dejar de
+tu nombre, tu ciudad y tu horario, y deja de preguntártelos · 🤫 corta la grabación sola al dejar de
 hablar (VAD) · ✋ interrumpible a media frase · ⚡ streaming por frases.
 
 <details>
@@ -414,12 +414,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**898 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**945 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 738 de los 898 casos**, sin instalar una sola dependencia:
+**En CI corren 781 de los 945 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -540,6 +540,7 @@ respaldo.py     Copia diaria de la base de datos, 7 días
 estado.py       Cronómetro y temporizador del servidor, guardados
 papelera.py     Deshacer lo borrado: 30 días, y recrea en Calendar
 diario.py       Apunta lo que no entendió, para convertirlo en tests
+perfil.py       Ciudad, nombre y horario: lo que Jarvis sí usa
 aviso_escritorio.py  Aviso en pantalla cuando no hay navegador
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
@@ -604,6 +605,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_estado.py          # Sobrevivir a un reinicio       (14 casos)
 ├── test_papelera.py        # Deshacer lo borrado            (20 casos)
 ├── test_diario.py          # Apuntar lo no entendido        (35 casos)
+├── test_perfil.py          # Ciudad, nombre y horario       (47 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

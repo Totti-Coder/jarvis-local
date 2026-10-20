@@ -1396,6 +1396,110 @@
    "inactivo"
   ]
  ],
+ "perfil_ciudad": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "perfil"
+  ],
+  [
+   "token",
+   "Apuntado: vives en Ponferrada. Ya no te preguntaré la ciudad."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "perfil_horario": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "perfil"
+  ],
+  [
+   "token",
+   "Apuntado: trabajas de 9 a 18."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "perfil_otro_dato": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "recordar_dato"
+  ],
+  [
+   "token",
+   "Hoy tienes: dentista a las 5."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "perfil_pregunta": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "perfil"
+  ],
+  [
+   "token",
+   "Sé que te llamas Pablo, vives en Ponferrada."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
  "diario_pregunta": [
   [
    "estado",

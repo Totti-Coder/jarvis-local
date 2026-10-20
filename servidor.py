@@ -42,6 +42,7 @@ import horas
 import memoria
 import ordenes
 import papelera
+import perfil
 import respaldo
 import rutinas
 import temporizador
@@ -69,6 +70,11 @@ horas.preparar()
 papelera.preparar()
 # Lo que Jarvis no entiende se apunta para poder arreglarlo (ver diario.py)
 diario.preparar()
+# Los pocos datos que Jarvis USA (ciudad, nombre, horario) van aparte de las
+# frases sueltas, y lo que ya se contara antes se rescata una vez
+perfil.preparar()
+if perfil.migrar_de_datos():
+    print(f"  perfil: {', '.join(f'{k}={v}' for k, v in perfil.todo().items())}")
 memoria.al_borrar = papelera.apuntar_tareas
 horas.al_borrar = papelera.apuntar_sesion
 # Una copia al día de la base de datos: ahí están las tareas y las horas
@@ -302,7 +308,8 @@ async def una_vuelta_de_avisos(ahora=None):
 
     # Y la sesion de horas que lleva abierta demasiado
     try:
-        r = await asyncio.to_thread(horas.recordatorio, ahora)
+        fin = (perfil.horario() or (None, None))[1]
+        r = await asyncio.to_thread(horas.recordatorio, ahora, fin)
     except Exception as e:
         print(f"[horas] no se pudo mirar la sesion: {e}")
         return False
@@ -911,6 +918,14 @@ class Conversacion:
         if nombre == "control_sistema":
             if await self._confirmar_accion(args, pregunta):
                 return
+        elif nombre == "recordar_dato":
+            # Lo que Jarvis puede USAR (ciudad, nombre, horario) va al perfil
+            # además de guardarse como frase: así "¿qué tiempo hace?" deja
+            # de preguntar la ciudad cada vez
+            detectado = await asyncio.to_thread(perfil.detectar, pregunta)
+            if detectado:
+                await self._guardar_perfil(detectado, args, pregunta)
+                return
         elif nombre == "enviar_correo":
             await self._preparar_correo(args, pregunta)
             return
@@ -966,6 +981,9 @@ class Conversacion:
             await self._correr_rutina(dato, pregunta)
         elif tipo == "deshacer":
             await self._deshacer(pregunta)
+        elif tipo == "perfil":
+            frase = await asyncio.to_thread(perfil.frase_resumen)
+            await self.decir_turno(frase, "perfil", pregunta)
         elif tipo == "diario":
             frase = await asyncio.to_thread(diario.frase_resumen, 7, self.ahora())
             await self.decir_turno(frase, "diario", pregunta)
@@ -1102,6 +1120,14 @@ class Conversacion:
         frase += f": {', '.join(hecho)}." if hecho else "."
         print(f"[rutina] quitada {rutina['nombre']}: {hecho or 'nada que deshacer'}")
         await self.decir_turno(frase, "rutina", pregunta)
+
+    async def _guardar_perfil(self, detectado, args, pregunta):
+        """Un dato del perfil, y la frase suelta también: sirve para charlar."""
+        frase = await asyncio.to_thread(perfil.guardar_detectado, *detectado,
+                                        self.ahora())
+        await asyncio.to_thread(memoria.recordar_dato, (args or {}).get("dato") or pregunta)
+        print(f"[perfil] {detectado[0]} = {detectado[1]}")
+        await self.decir_turno(frase, "perfil", pregunta)
 
     async def _deshacer(self, pregunta):
         """Devuelve a su sitio lo último que se borró."""

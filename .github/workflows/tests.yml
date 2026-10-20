@@ -116,3 +116,6 @@ jobs:
 
       - name: Diario — apuntar lo que no entendió
         run: python test_diario.py
+
+      - name: Perfil — ciudad, nombre y horario
+        run: python test_perfil.py

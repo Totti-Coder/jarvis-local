@@ -194,6 +194,11 @@ ESCENARIOS = [
     # Quitar una rutina: antes caía en el router como "completar tarea"
     ("rutina_quitar",       "Vale, quitar modo trabajo",    ("completar_tarea", {"texto": "modo trabajo"}), None),
     ("rutina_quitar_nada",  "Quita el modo trabajo",        (None, None), None),
+    # El perfil: lo que Jarvis puede USAR va aparte de las frases sueltas
+    ("perfil_ciudad",       "Vivo en Ponferrada",           ("recordar_dato", {"dato": "vive en Ponferrada"}), None),
+    ("perfil_horario",      "Trabajo de 9 a 6",             ("recordar_dato", {"dato": "trabaja de 9 a 6"}), None),
+    ("perfil_otro_dato",    "Mi hermana se llama Ana",      ("recordar_dato", {"dato": "su hermana se llama Ana"}), None),
+    ("perfil_pregunta",     "¿Qué sabes de mí?",            (None, None), None),
     # Lo que no entendio se apunta solo, y se puede preguntar por ello
     ("diario_pregunta",     "¿Qué no has entendido?",       (None, None), None),
     ("diario_apunta",       "Quita lo del gimnasio",        ("completar_tarea", {"texto": "gimnasio"}), None),
@@ -283,6 +288,13 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre.startswith("perfil_"):
+        with memoria._conectar() as con:
+            con.execute("DELETE FROM perfil")
+            con.execute("DELETE FROM datos")
+    if nombre == "perfil_pregunta":
+        servidor.perfil.guardar("nombre", "Pablo", AHORA_FIJO)
+        servidor.perfil.guardar("ciudad", "Ponferrada", AHORA_FIJO)
     if nombre.startswith("diario_"):
         with memoria._conectar() as con:
             con.execute("DELETE FROM no_entendido")

@@ -284,11 +284,15 @@ def fin_dicho(texto, inicio, ahora):
     return validos[0] if validos else None
 
 
-def recordatorio(ahora=None):
+def recordatorio(ahora=None, fin_jornada=None):
     """(clave, frase) si toca recordar que hay una sesión abierta, o None.
 
     La clave va a la tabla de avisos: con dos pestañas abiertas, solo una
     lo dice, y cada tramo (3 h, 6 h...) se dice una vez.
+
+    Con `fin_jornada` (la hora a la que acabas de trabajar, del perfil) el
+    aviso de después de esa hora es más claro: seguir contando a las once
+    de la noche casi nunca es a propósito.
     """
     ahora = ahora or datetime.now()
     s = abierta()
@@ -298,6 +302,11 @@ def recordatorio(ahora=None):
     if tramos < 1:
         return None
     lleva = duracion_hablada((ahora - s["inicio"]).total_seconds())
+    if fin_jornada is not None and ahora.hour >= fin_jornada:
+        return (f"h:{s['id']}:{tramos}",
+                f"Tu jornada acababa a las {fin_jornada} y sigues contando "
+                f"horas para {s['cliente']}: llevas {lleva}. Si terminaste "
+                f"antes, dime a qué hora.")
     return (f"h:{s['id']}:{tramos}",
             f"Sigues contando horas para {s['cliente']}: llevas {lleva}. "
             f"Si ya habías terminado, dime a qué hora, por ejemplo: "

@@ -225,8 +225,12 @@ def lugar_en(frase):
 
 
 def donde_vive():
-    """La ciudad que el usuario haya contado alguna vez ("vivo en Bilbao")."""
+    """La ciudad del perfil, o la que contara alguna vez hablando."""
     import memoria
+    import perfil
+    guardada = perfil.ciudad()
+    if guardada:
+        return guardada
     for dato in reversed(memoria.datos_conocidos()):
         m = re.search(r"\bvive en ([A-Za-zÁÉÍÓÚáéíóúÑñ .'-]{2,40})", dato)
         if m:
