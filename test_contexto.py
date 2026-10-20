@@ -114,6 +114,32 @@ f = memoria.cambiar_cuando(t["id"], "el jueves a las 9", HOY)
 comprueba(f"también de día: {f}", "9 de la mañana" in f, f)
 comprueba("una hora que no se entiende no toca nada",
           memoria.cambiar_cuando(t["id"], "en marcha", HOY) is None)
+
+print("\n  decir solo la hora no puede cambiar el día:")
+memoria.anadir_tarea("llamar al banco", "el jueves a las nueve")
+banco = memoria.ultima_apuntada()
+comprueba("se apunta con la hora dicha en letra",
+          banco["cuando_iso"].startswith("2026-10-22T09:00"), banco["cuando_iso"])
+
+
+def mover(cambio):
+    memoria.cambiar_cuando(banco["id"], cambio, HOY)
+    with memoria._conectar() as con:
+        return con.execute("SELECT cuando_iso FROM tareas WHERE id = ?",
+                           (banco["id"],)).fetchone()[0]
+
+
+d = mover("a las diez")
+comprueba(f"'a las diez' deja el jueves y pone las 10: {d}",
+          d.startswith("2026-10-22T10:00"), d)
+# "Las diez" son las 10 o las 22: moviendo algo que ya tenía hora, se
+# queda la de al lado, que es lo que quiere decir quien lo mueve
+d = mover("a las once")
+comprueba(f"y no se va a las once de la noche: {d}",
+          d.startswith("2026-10-22T11:00"), d)
+d = mover("el viernes a las 5")
+comprueba(f"si SÍ se dice el día, se mueve de día: {d}",
+          d.startswith("2026-10-23T17:00"), d)
 comprueba("y una tarea que no existe tampoco",
           memoria.cambiar_cuando(9999, "a las 6", HOY) is None)
 

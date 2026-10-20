@@ -251,7 +251,10 @@ async def un_turno(escenario, hilo=None):
     # El cronometro y el temporizador son del SERVIDOR, no de la pestaña:
     # se reinician entre escenarios para que uno no herede del anterior
     servidor.ahora_servidor = lambda: AHORA_FIJO   # el reloj del servidor
-    servidor.CRONO = servidor.cronometro.Cronometro()
+    # Reloj parado tambien en el cronometro: con el reloj de verdad, entre
+    # arrancarlo y pintarlo pasaban centesimas y el mismo camino salia unas
+    # veces 0.0 y otras 0.01, asi que el test fallaba a ratos sin motivo
+    servidor.CRONO = servidor.cronometro.Cronometro(reloj=lambda: 1000.0)
     if servidor.TAREA_TEMPORIZADOR:        # si no, la cuenta atras de un
         servidor.TAREA_TEMPORIZADOR.cancel()   # escenario pisa al siguiente
     servidor.TEMPORIZADOR = servidor.TAREA_TEMPORIZADOR = None

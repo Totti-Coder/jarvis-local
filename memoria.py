@@ -138,6 +138,30 @@ def _buscar_relativo(t, ahora):
     return ahora + timedelta(weeks=valor)
 
 
+# Hablando, las horas se dicen en letra ("a las nueve"), y Whisper las
+# escribe tal cual. Se pasan a numero antes de buscar la hora. Solo se
+# tocan las que van detras de "a las", "entre las", "y las"...: asi un
+# "una" que sea articulo ("apunta una reunion") se queda como esta.
+_HORAS_LETRA = {
+    "veintitres": 23, "veintidos": 22, "veintiuna": 21, "veintiuno": 21,
+    "diecinueve": 19, "dieciocho": 18, "diecisiete": 17, "dieciseis": 16,
+    "veinte": 20, "quince": 15, "catorce": 14, "trece": 13, "doce": 12,
+    "once": 11, "diez": 10, "nueve": 9, "ocho": 8, "siete": 7, "seis": 6,
+    "cinco": 5, "cuatro": 4, "tres": 3, "dos": 2, "una": 1, "uno": 1,
+}
+# Las mas largas primero: si no, "veinte" se comeria el principio de
+# "veintitres" y saldria la hora equivocada
+_EN_LETRA = re.compile(
+    r"\b(a|sobre|hacia|entre|desde|de|y)\s+(las?)\s+(" +
+    "|".join(sorted(_HORAS_LETRA, key=len, reverse=True)) + r")\b")
+
+
+def _horas_en_letra(t):
+    """"a las nueve" -> "a las 9"."""
+    return _EN_LETRA.sub(
+        lambda m: f"{m.group(1)} {m.group(2)} {_HORAS_LETRA[m.group(3)]}", t)
+
+
 def _buscar_hora(t):
     """Saca la hora de un texto.
 
@@ -223,6 +247,7 @@ def interpretar_cuando(texto, ahora=None):
         return None, False
     ahora = ahora or datetime.now()
     t = _sin_tildes(texto).strip()
+    t = _horas_en_letra(t)
 
     # Tiempo relativo: "en 30 minutos", "dentro de una hora", "en media hora"
     rel = _buscar_relativo(t, ahora)
@@ -439,6 +464,23 @@ def ultima_apuntada():
     return dict(f) if f else None
 
 
+# "Cambialo a las diez" no dice que dia: dice una hora. Si al moverla se
+# interpretara sola, "a las diez" caeria en hoy o maniana y una tarea del
+# jueves se iria de dia sin que nadie lo pidiera.
+_DICE_EL_DIA = re.compile(
+    r"\b(?:hoy|manana|pasado\s+manana|esta\s+(?:manana|tarde|noche)|"
+    + "|".join(DIAS)
+    # El mes se nombra entero: si no, "a las 6 de la tarde" pasaria por
+    # "dia 6 de algo" y se daria por dicho un dia que nadie dijo
+    + r"|\d{1,2}\s+de\s+(?:" + "|".join(_sin_tildes(m) for m in MESES_ES) + r")"
+    + r"|que\s+viene|proximo|siguiente)\b")
+
+
+def _dice_el_dia(texto):
+    """Si la frase nombra un dia, y no solo una hora."""
+    return bool(_DICE_EL_DIA.search(_sin_tildes(texto or "")))
+
+
 def cambiar_cuando(id_tarea, cuando, ahora=None):
     """Mueve una tarea a otra hora. Devuelve la frase que dirá Jarvis.
 
@@ -455,6 +497,25 @@ def cambiar_cuando(id_tarea, cuando, ahora=None):
         if not f:
             return None
         tarea = dict(f)
+
+    # Solo se dijo la hora: el dia que tenia se respeta
+    if tiene_hora and not _dice_el_dia(cuando) and tarea.get("cuando_iso"):
+        try:
+            antes = datetime.fromisoformat(tarea["cuando_iso"])
+        except ValueError:
+            antes = None
+        if antes:
+            hora = _buscar_hora(_horas_en_letra(_sin_tildes(cuando)))
+            # "Las diez" pueden ser las 10 o las 22. Moviendo algo que ya
+            # tenia hora, se queda la de al lado: una cita de las 9 que se
+            # pasa "a las diez" son las 10, no las 10 de la noche
+            if hora and hora[2]:
+                h = min(hora[0], hora[0] + 12,
+                        key=lambda c: abs(c - antes.hour))
+                momento = momento.replace(hour=h)
+            momento = antes.replace(hour=momento.hour, minute=momento.minute)
+
+    with _conectar() as con:
         con.execute("UPDATE tareas SET cuando_texto = ?, cuando_iso = ?, "
                     "tiene_hora = ? WHERE id = ?",
                     (cuando.strip(), momento.isoformat(), int(tiene_hora), id_tarea))
@@ -591,6 +652,7 @@ def interpretar_ventana(texto, ahora=None):
         return None, None
     ahora = ahora or datetime.now()
     t = _sin_tildes(texto).strip()
+    t = _horas_en_letra(t)
 
     # El fin de semana se mira lo primero: son tres días seguidos y no
     # encaja en nada de lo de abajo, que va de un día o de un rato.

@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-986_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-999_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -34,13 +34,23 @@
 ## 🎬 Demo
 
 <p align="center">
-  <img src="jarvis.png" alt="Interfaz de Jarvis" width="720">
+  <img src="jarvis.gif" alt="Jarvis respondiendo a seis órdenes seguidas" width="860">
+</p>
+
+<p align="center">
+  <sub>
+  Seis órdenes seguidas, sin tocar el teclado: consultar la agenda · apuntar
+  una tarea · <b>“cámbialo a las diez”</b> (sigue el hilo, no hay que repetir
+  el nombre) · una rutina de tres pasos · el tiempo de verdad (Open-Meteo) ·
+  las horas fichadas de un cliente.
+  </sub>
 </p>
 
 > [!NOTE]
-> **Sustituir por un GIF de 15–20 s**: pulsar espacio → hablar → el anillo
-> reacciona al espectro → respuesta hablada → popup del correo.
-> Es lo primero que mira quien entra al repositorio.
+> Grabado contra el servidor de verdad: el mismo router, las mismas
+> herramientas y la misma base de datos, con una agenda de ejemplo. Las
+> frases se inyectan como si se hubieran dicho, porque la grabación va sin
+> micrófono y sin ventana ([por qué](#-grabar-la-demo)).
 
 ```
 Tú     ▸ "Recuérdame sacar la basura mañana a las ocho y media"
@@ -92,7 +102,7 @@ flowchart LR
 
 ## 🧠 Engineering Highlights
 
-Los cinco problemas que costaron de verdad. Cada decisión viene de una
+Los ocho problemas que costaron de verdad. Cada decisión viene de una
 medición, no de una intuición.
 
 - **🔀 Dual-Prompt Router** — Enchufar las herramientas al asistente principal
@@ -127,6 +137,15 @@ medición, no de una intuición.
   deja un aviso en la esquina de la pantalla**. El cronómetro y el temporizador
   se guardan en SQLite con hora de pared, así que un reinicio no se los lleva:
   comprobado matando el servidor a lo bruto y viendo que vuelve contando.
+
+- **🕐 El bug que encontró la demo** — Grabando el GIF, *"apunta llamar al
+  banco el jueves a las nueve"* se guardó **a medianoche**: el intérprete de
+  fechas solo entendía cifras, y hablando nadie dice cifras. Tirando del hilo
+  salió un segundo fallo peor: *"cámbialo a las diez"* **movía la tarea de
+  día**, porque una hora suelta se reinterpretaba desde cero. Ahora la hora en
+  letra se traduce antes de interpretarla, y al mover algo se respeta el día
+  que tenía y se elige la lectura de al lado (las 9 → **las 10**, no las 22).
+  **13 casos nuevos** para que no vuelva.
 
 - **🔇 Whisper no calla ante el silencio** — Devuelve una frase: con un
   segundo de nada escribió *"Este es el canal de subtítulos..."*; con un golpe
@@ -415,16 +434,16 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**986 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**999 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 817 de los 986 casos**, sin instalar una sola dependencia:
+**En CI corren 830 de los 999 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
-otros 144 necesitan GPU, Ollama
+otros 169 necesitan GPU, Ollama
 y los modelos de voz, así que se ejecutan en local — prometer en el badge lo
 que el runner no puede probar sería peor que no tener CI.
 
@@ -484,6 +503,36 @@ creció de 42 a 108 frases así: cada vez que enrutaba mal algo real, esa frase
 entró en la evaluación.
 
 </details>
+
+---
+
+## 🎥 Grabar la demo
+
+```bash
+python demo/servidor_demo.py demo.db     # el servidor de verdad, con datos de ejemplo
+python demo/grabar.py jarvis.gif 30      # 30 s de grabación -> GIF
+```
+
+Lo interesante no es cómo se monta el GIF, sino **por qué no se graba la
+pantalla**.
+
+El primer intento capturaba una zona de la pantalla con `ImageGrab`. En una
+de las tomas, la ventana de la demo perdió el primer plano y el fotograma
+recogió lo que había detrás: otra ventana del navegador, con una sesión
+abierta y una IP dentro. En un GIF que iba a un repositorio público.
+
+Eso no se arregla con cuidado, se arregla **quitando la capacidad**:
+
+| | |
+|:---|:---|
+| **Sin ventana** | El navegador va en *headless* y los fotogramas los sirve él mismo por el protocolo de DevTools. No existe ventana en la pantalla, así que no hay nada que se pueda colar en el encuadre. |
+| **Sin micrófono** | El micro local y el del navegador se sustituyen por uno mudo, y Chromium arranca con un dispositivo de pega. En la primera toma, el micro transcribió lo que se hablaba en la habitación. |
+| **Sin datos reales** | Base de datos aparte con una agenda de ejemplo, y sin Google: ni calendario ni correo de verdad. |
+| **Sin arrastres** | Perfil de navegador nuevo en cada toma, para que no aparezcan frases de la grabación anterior. |
+
+La lección es la de siempre en seguridad: una medida que depende de que
+nada salga mal no es una medida. Lo que funciona es que el fallo no tenga
+dónde ocurrir.
 
 ---
 
@@ -578,6 +627,8 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── static/nucleo.js        # Núcleo 3D con Three.js (servido en local)
 ├── ver_tareas.py           # Utilidad de consola para la agenda
 ├── comprobar_google.py     # Valida el .env sin mostrar los secretos
+├── demo/servidor_demo.py   # El servidor real con datos de ejemplo, para el GIF
+├── demo/grabar.py          # Graba el GIF sin ventana y sin micrófono
 │
 │   # PLANTILLAS: se suben porque no llevan datos reales
 ├── .env.example
@@ -663,8 +714,9 @@ SILENCIO_CORTE_S  = 1.8                      # silencio que da por terminado
   firma tu propio PC, así que el navegador avisa. No hay forma de evitarlo
   sin un dominio público.
 - **El control del sistema es de Windows** (`taskkill`, registro, rutas).
-- **Horas en letra.** "A las ocho cuarenta" no se interpreta; en cifras sí, y
-  Whisper casi siempre transcribe los números como cifras.
+- **Horas en letra, a medias.** *"A las ocho"*, *"a las nueve y media"* o *"a
+  las veintitrés"* sí se entienden. Los minutos sueltos no: *"a las ocho
+  cuarenta"* se queda en las ocho.
 
 ---
 

@@ -46,6 +46,18 @@ CASOS = [
     ("a las 6",                    "01/09", "18:00"),   # las 6 = 18:00, y ya pasaron: mañana
     ("",                           None,    None),
     ("cuando pueda",               None,    None),      # no se entiende, y está bien
+    # Hablando no se dicen números, se dicen palabras, y Whisper escribe
+    # lo que oye: "a las nueve" tiene que valer igual que "a las 9"
+    ("mañana a las nueve",         "01/09", "09:00"),
+    ("el jueves a las nueve",      "03/09", "09:00"),
+    ("a las ocho de la tarde",     "31/08", "20:00"),
+    ("a la una",                   "01/09", "13:00"),   # la una ya pasó: mañana
+    ("el viernes a las siete y media", "04/09", "19:30"),
+    ("el jueves a las veintitrés", "03/09", "23:00"),
+    ("mañana a las diez de la mañana", "01/09", "10:00"),
+    ("mañana a las doce y cuarto", "01/09", "12:15"),
+    # y un "una" que es artículo no es ninguna hora
+    ("una reunión",                None,    None),
 ]
 
 fallos = 0
