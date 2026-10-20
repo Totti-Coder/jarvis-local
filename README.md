@@ -25,7 +25,7 @@
   <img alt="Ollama" src="https://img.shields.io/badge/Ollama-llama3.1--8B-000000?logo=ollama&logoColor=white">
   <img alt="Piper" src="https://img.shields.io/badge/Piper-neural_TTS-7C3AED">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-source_of_truth-003B57?logo=sqlite&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-945_casos-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-986_casos-2ea44f">
   <img alt="Herramientas" src="https://img.shields.io/badge/tool_calling-13_funciones-0ea5e9">
 </p>
 
@@ -194,6 +194,7 @@ mover Whisper a CPU.
 - Lee y escribe tu Google Calendar
 - Te resume el día al entrar
 - **Deshacer:** *"me he equivocado"* devuelve lo borrado, hasta 30 días
+- **Sigue el hilo:** *"cámbialo a las 6"*, *"bórralo"*, *"¿a qué hora era?"*
 - **Te avisa 10 min antes**, sin preguntar
 
 </td>
@@ -414,12 +415,12 @@ así que no hay inyección posible.
 
 ## 🧪 Testing
 
-**945 casos** sobre la lógica que puede romperse en silencio —intérprete de
+**986 casos** sobre la lógica que puede romperse en silencio —intérprete de
 fechas, troceado para la voz, parseo MIME del correo, síntesis— más una **eval
 suite del router con 108 frases reales al 100 %** (98 % dichas por voz), que es la pieza menos
 determinista del sistema y la única forma de saber si una mejora lo es.
 
-**En CI corren 781 de los 945 casos**, sin instalar una sola dependencia:
+**En CI corren 817 de los 986 casos**, sin instalar una sola dependencia:
 el intérprete de fechas, las franjas horarias, el resumen diario, los datos
 del usuario, el parseo MIME del correo, el cronómetro, las horas por
 cliente, las rutinas, el temporizador y la [guardia de conexiones](docs/seguridad.md). Los
@@ -541,6 +542,7 @@ estado.py       Cronómetro y temporizador del servidor, guardados
 papelera.py     Deshacer lo borrado: 30 días, y recrea en Calendar
 diario.py       Apunta lo que no entendió, para convertirlo en tests
 perfil.py       Ciudad, nombre y horario: lo que Jarvis sí usa
+contexto.py     Seguir el hilo: "bórralo", "cámbialo a las 6"
 aviso_escritorio.py  Aviso en pantalla cuando no hay navegador
 voz.py          Piper, cola de voz, troceado de frases
 audio.py        Micrófono del PC y del navegador, mismo interfaz
@@ -606,6 +608,7 @@ index.html      Interfaz + popup del correo (Three.js)
 ├── test_papelera.py        # Deshacer lo borrado            (20 casos)
 ├── test_diario.py          # Apuntar lo no entendido        (35 casos)
 ├── test_perfil.py          # Ciudad, nombre y horario       (47 casos)
+├── test_contexto.py        # Seguir el hilo                 (41 casos)
 ├── test_cadena.py          # Las cuatro etapas de una vez
 │
 │   # TUYO: nada de esto se sube (.gitignore)

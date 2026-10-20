@@ -432,6 +432,51 @@ def anadir_tarea(texto, cuando=""):
     return f"Apuntado: {texto}."
 
 
+def ultima_apuntada():
+    """La última tarea que se guardó. Para poder decir luego "cámbialo"."""
+    with _conectar() as con:
+        f = con.execute("SELECT * FROM tareas ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(f) if f else None
+
+
+def cambiar_cuando(id_tarea, cuando, ahora=None):
+    """Mueve una tarea a otra hora. Devuelve la frase que dirá Jarvis.
+
+    En Google no hay "mover": se borra el evento y se crea otro. Por eso se
+    hace aquí y no en dos sitios, y por eso el id del evento se actualiza.
+    """
+    ahora = ahora or datetime.now()
+    momento, tiene_hora = interpretar_cuando(cuando, ahora)
+    if not momento:
+        return None                   # no se entendió el cuándo: no se toca
+
+    with _conectar() as con:
+        f = con.execute("SELECT * FROM tareas WHERE id = ?", (id_tarea,)).fetchone()
+        if not f:
+            return None
+        tarea = dict(f)
+        con.execute("UPDATE tareas SET cuando_texto = ?, cuando_iso = ?, "
+                    "tiene_hora = ? WHERE id = ?",
+                    (cuando.strip(), momento.isoformat(), int(tiene_hora), id_tarea))
+
+    if tarea.get("evento_id") and borrar_externo is not None:
+        try:
+            borrar_externo(tarea["evento_id"])
+        except Exception as e:
+            print(f"[calendar] no se pudo quitar el evento viejo: {e}")
+    if crear_externo is not None:
+        try:
+            nuevo = crear_externo(tarea["texto"], momento.isoformat(), tiene_hora)
+            with _conectar() as con:
+                con.execute("UPDATE tareas SET evento_id = ? WHERE id = ?",
+                            (nuevo, id_tarea))
+        except Exception as e:
+            print(f"[calendar] no se pudo crear el evento nuevo: {e}")
+
+    return (f"Movido: {tarea['texto']}, "
+            f"{en_palabras(momento.isoformat(), tiene_hora, ahora)}.")
+
+
 FRANJAS_HORARIAS = {
     "madrugada": (0, 6),
     "manana": (6, 13),

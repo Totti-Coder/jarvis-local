@@ -1396,6 +1396,140 @@
    "inactivo"
   ]
  ],
+ "hilo_apunta": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "anadir_tarea"
+  ],
+  [
+   "token",
+   "Hoy tienes: dentista a las 5."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "hilo_cuando": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "agenda"
+  ],
+  [
+   "token",
+   "dentista, mañana a las 5 de la tarde."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "hilo_cambia": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "agenda"
+  ],
+  [
+   "token",
+   "Movido: dentista, hoy a las 6 de la tarde."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "hilo_borra": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "herramienta",
+   "agenda"
+  ],
+  [
+   "token",
+   "Hecho, quito dentista de la lista."
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
+ "hilo_sin_nada": [
+  [
+   "estado",
+   "pensando"
+  ],
+  [
+   "token",
+   "Claro. "
+  ],
+  [
+   "token",
+   "Aquí va. "
+  ],
+  [
+   "estado",
+   "hablando"
+  ],
+  [
+   "token",
+   "Fin."
+  ],
+  [
+   "fin_respuesta",
+   ""
+  ],
+  [
+   "estado",
+   "inactivo"
+  ]
+ ],
  "perfil_ciudad": [
   [
    "estado",

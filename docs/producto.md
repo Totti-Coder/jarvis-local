@@ -86,7 +86,7 @@ Esta lista pesa tanto como la de funcionalidades.
 |---|---|
 | Acierto del router (elegir la acción correcta) | **108/108** frases reales · **98 %** dichas por voz |
 | Órdenes fijas entendidas (cronómetro, temporizador, horas, rutinas) | **74/74** en texto · **94 %** dichas por voz sintética |
-| Tests | **945 casos**, 781 en el CI |
+| Tests | **986 casos**, 817 en el CI |
 | Latencia de voz a respuesta | **~0,8 s** |
 | Promesas falsas del conversador (medido con el modelo, 120 respuestas) | **3 %** (era ~40 % antes de acotar el prompt) |
 | APIs de pago | **0** |

@@ -15,6 +15,7 @@ Stdlib pura: corre en el CI.
 import re
 from dataclasses import dataclass, field
 
+import contexto
 import cronometro
 import diario
 import horas
@@ -48,6 +49,8 @@ class Estado:
     temporizador_activo: bool = False
     sesion_abierta: bool = False
     clientes: dict = field(default_factory=dict)
+    hilo: object = None        # de qué se hablaba (contexto.Hilo)
+    ahora: object = None       # el reloj, para que los tests no dependan del día
     rutinas: list = None               # None: se leen de atajos.json
 
 
@@ -96,6 +99,12 @@ def detectar(frase, estado=None):
     h = horas.orden(frase, estado.sesion_abierta, estado.clientes)
     if h:
         return ("horas", h)
+    # "Bórralo", "cámbialo a las 6": solo si hay algo reciente de lo que
+    # hablar. Sin eso, mejor no entender que borrar la tarea equivocada
+    if estado.hilo is not None and estado.hilo.tarea_reciente(estado.ahora):
+        ref = contexto.referencia(frase)
+        if ref:
+            return ("contexto", ref)
     if es_deshacer(frase):
         return ("deshacer", None)
     if diario.preguntan_por_el_diario(frase):

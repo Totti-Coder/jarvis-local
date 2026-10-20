@@ -119,3 +119,6 @@ jobs:
 
       - name: Perfil — ciudad, nombre y horario
         run: python test_perfil.py
+
+      - name: Seguir el hilo — "bórralo", "cámbialo a las 6"
+        run: python test_contexto.py

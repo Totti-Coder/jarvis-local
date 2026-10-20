@@ -34,6 +34,7 @@ import buscar
 import calendario
 import correo
 import aviso_escritorio
+import contexto
 import cronometro
 import diario
 import estado
@@ -403,6 +404,8 @@ class Conversacion:
         # mandaría, y tras reiniciar el servidor la pestaña seguiría
         # enseñando una sesión que ya no existe
         self.horas_enviadas = "sin enviar"
+        # De qué se estaba hablando, para entender "bórralo" o "cámbialo"
+        self.hilo = contexto.Hilo()
 
         # Se fija en correr(), que es cuando hay bucle de asyncio
         self.bucle_principal = None
@@ -877,6 +880,7 @@ class Conversacion:
         abierta = await asyncio.to_thread(horas.abierta)
         conocidos = await asyncio.to_thread(horas.clientes)
         estado = ordenes.Estado(crono_visible=self.crono.visible,
+                                hilo=self.hilo, ahora=self.ahora(),
                                 temporizador_activo=self.temporizador is not None,
                                 sesion_abierta=abierta is not None,
                                 clientes=conocidos)
@@ -981,6 +985,8 @@ class Conversacion:
             await self._correr_rutina(dato, pregunta)
         elif tipo == "deshacer":
             await self._deshacer(pregunta)
+        elif tipo == "contexto":
+            await self._usar_contexto(*dato, pregunta)
         elif tipo == "perfil":
             frase = await asyncio.to_thread(perfil.frase_resumen)
             await self.decir_turno(frase, "perfil", pregunta)
@@ -1120,6 +1126,35 @@ class Conversacion:
         frase += f": {', '.join(hecho)}." if hecho else "."
         print(f"[rutina] quitada {rutina['nombre']}: {hecho or 'nada que deshacer'}")
         await self.decir_turno(frase, "rutina", pregunta)
+
+    async def _usar_contexto(self, accion, cuando, pregunta):
+        """"Bórralo", "cámbialo a las 6": sobre lo último de lo que se habló."""
+        tarea = self.hilo.tarea_reciente(self.ahora())
+        if not tarea:
+            await self._conversar(pregunta)
+            return
+
+        if accion == "cuando":
+            frase = memoria.en_palabras(tarea["cuando_iso"], tarea["tiene_hora"],
+                                        self.ahora())
+            frase = (f"{tarea['texto']}, {frase}." if frase
+                     else f"{tarea['texto']} no tiene hora puesta.")
+        elif accion == "quitar":
+            frase = await asyncio.to_thread(memoria.completar_tarea, tarea["texto"])
+            self.hilo.olvidar()
+        else:                                   # cambiar de hora
+            frase = await asyncio.to_thread(memoria.cambiar_cuando, tarea["id"],
+                                            cuando, self.ahora())
+            if frase is None:
+                # Lo que dijo no era una hora ("ponlo en marcha"): que lo
+                # resuelva quien toque, en vez de inventarse un cambio
+                await self._conversar(pregunta)
+                return
+            # Sigue siendo la tarea de la que se habla, ya con su hora nueva
+            fresca = await asyncio.to_thread(memoria.tareas_por_ids, [tarea["id"]])
+            self.hilo.apuntar_tarea(dict(fresca[0]) if fresca else tarea, self.ahora())
+        print(f"[hilo] {accion} sobre {tarea['texto']!r}")
+        await self.decir_turno(frase, "agenda", pregunta)
 
     async def _guardar_perfil(self, detectado, args, pregunta):
         """Un dato del perfil, y la frase suelta también: sirve para charlar."""
@@ -1721,6 +1756,17 @@ class Conversacion:
         resultado = await asyncio.to_thread(ejecutar, nombre, args)
         if not resultado:
             return False              # si falla, se sigue como conversación
+
+        # De qué se acaba de hablar, para entender luego "cámbialo a las 6".
+        # Solo cuando hay UNA tarea clara: apuntar algo nuevo, o preguntar
+        # por una concreta ("¿cuándo tengo el dentista?")
+        if nombre == "anadir_tarea":
+            self.hilo.apuntar_tarea(await asyncio.to_thread(memoria.ultima_apuntada),
+                                    self.ahora())
+        elif nombre == "listar_tareas" and (args or {}).get("texto"):
+            cual = await asyncio.to_thread(memoria.buscar_tarea, args["texto"])
+            if cual:
+                self.hilo.apuntar_tarea(dict(cual), self.ahora())
 
         # Por decir_turno y no repitiendo aquí los mismos siete pasos: eran
         # dos copias del mismo código, y al apuntar en el diario lo que no

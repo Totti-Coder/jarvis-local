@@ -194,6 +194,13 @@ ESCENARIOS = [
     # Quitar una rutina: antes caía en el router como "completar tarea"
     ("rutina_quitar",       "Vale, quitar modo trabajo",    ("completar_tarea", {"texto": "modo trabajo"}), None),
     ("rutina_quitar_nada",  "Quita el modo trabajo",        (None, None), None),
+    # Seguir el hilo: "borralo" o "cambialo" sobre lo ultimo de lo que se hablo
+    ("hilo_apunta",         "Apunta dentista mañana a las 5", ("anadir_tarea", {"texto": "dentista", "cuando": "mañana a las 5"}), None),
+    ("hilo_cuando",         "¿A qué hora era?",             (None, None), None),
+    ("hilo_cambia",         "Cámbialo a las 6",             (None, None), None),
+    ("hilo_borra",          "Bórralo",                      (None, None), None),
+    # Y sin nada reciente de lo que hablar, "borralo" NO borra nada
+    ("hilo_sin_nada",       "Bórralo",                      (None, None), None),
     # El perfil: lo que Jarvis puede USAR va aparte de las frases sueltas
     ("perfil_ciudad",       "Vivo en Ponferrada",           ("recordar_dato", {"dato": "vive en Ponferrada"}), None),
     ("perfil_horario",      "Trabajo de 9 a 6",             ("recordar_dato", {"dato": "trabaja de 9 a 6"}), None),
@@ -234,11 +241,13 @@ EVENTOS_FALSOS = [
 ]
 
 
-async def un_turno(escenario):
+async def un_turno(escenario, hilo=None):
     nombre, frase, ruta, pendiente = escenario
     sock = SocketFalso()
     conv = servidor.Conversacion(sock)
     conv.bucle_principal = asyncio.get_running_loop()
+    if hilo is not None:
+        conv.hilo = hilo           # el hilo sigue de un turno al siguiente
     # El cronometro y el temporizador son del SERVIDOR, no de la pestaña:
     # se reinician entre escenarios para que uno no herede del anterior
     servidor.ahora_servidor = lambda: AHORA_FIJO   # el reloj del servidor
@@ -288,6 +297,19 @@ async def un_turno(escenario):
     servidor.calendario.listar_eventos = lambda d, h, maximo=250: (
         [] if nombre == "no_esta_en_ningun_sitio" else EVENTOS_FALSOS)
     conv.ahora = lambda: AHORA_FIJO
+    if nombre == "hilo_apunta":
+        # Una tarea de verdad y con fecha FIJA: si se dejara al doble, el
+        # hilo no tendria de que hablar, y si se interpretara "mañana" con
+        # el reloj real, el resultado cambiaria cada dia
+        with memoria._conectar() as con:
+            con.execute("DELETE FROM tareas WHERE texto = 'dentista'")
+            con.execute("INSERT INTO tareas (texto, cuando_texto, cuando_iso, "
+                        "tiene_hora, creada) VALUES ('dentista', 'mañana a las 5', "
+                        "?, 1, ?)",
+                        ((AHORA_FIJO + timedelta(days=1)).replace(hour=17).isoformat(),
+                         AHORA_FIJO.isoformat()))
+    if nombre == "hilo_sin_nada":
+        conv.hilo.olvidar()
     if nombre.startswith("perfil_"):
         with memoria._conectar() as con:
             con.execute("DELETE FROM perfil")
@@ -372,11 +394,16 @@ async def un_turno(escenario):
 
     await conv.responder(frase)
     servidor.CONEXIONES.discard(conv)
-    return nombre, resumir(sock.mensajes)
+    return nombre, resumir(sock.mensajes), conv.hilo
 
 
 async def todos():
-    return [await un_turno(e) for e in ESCENARIOS]
+    salida = []
+    hilo = None
+    for e in ESCENARIOS:
+        nombre, resumen, hilo = await un_turno(e, hilo)
+        salida.append((nombre, resumen))
+    return salida
 
 
 if __name__ == "__main__":
